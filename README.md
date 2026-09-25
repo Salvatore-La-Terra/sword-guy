@@ -11,8 +11,16 @@ npm install
 npm run dev
 ```
 
-Open the local URL printed by Vite. The current prototype supports movement
-with the arrow keys or WASD.
+Open the local URL printed by Vite.
+
+## Controls
+
+- **WASD** or **arrow keys**: move
+- **Space**: swing the sword in the last movement direction
+- **R**: restart after game over
+
+Enemies enter from the arena edges and pursue the player. Defeat them with the
+sword, avoid contact damage, and survive as long as possible.
 
 ## Production build
 
