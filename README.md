@@ -1,6 +1,6 @@
-# Phaser Browser Game
+# Sword Guy
 
-A simple browser game scaffold built with Phaser 3, Vite, and TypeScript.
+Simple Phaser browser game built with Phaser, Vite, and TypeScript.
 
 ## Requirements
 
