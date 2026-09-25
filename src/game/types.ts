@@ -7,6 +7,7 @@ export interface Fighter {
   sprite: Phaser.Types.Physics.Arcade.SpriteWithDynamicBody;
   sword: Phaser.GameObjects.Image;
   shield: Phaser.GameObjects.Image;
+  texturePrefix: string;
   hp: number;
   facing: number;
   state: FighterState;
