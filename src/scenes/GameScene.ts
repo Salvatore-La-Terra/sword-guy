@@ -4,7 +4,10 @@ import { ARENA, COMBAT, GAME_HEIGHT, GAME_WIDTH, PLAYER, SKELETON } from '../gam
 import type { Fighter, Player, Skeleton } from '../game/types';
 import { angleBetween, angleDifference, directionFromAngle } from '../game/math';
 
-type Keys = Record<'w' | 'a' | 's' | 'd' | 'esc', Phaser.Input.Keyboard.Key>;
+type Keys = Record<'w' | 'a' | 's' | 'd' | 'esc' | 'space', Phaser.Input.Keyboard.Key>;
+
+const HEAL_AMOUNT = 1;
+const HEAL_COOLDOWN_MS = 5000;
 
 export class GameScene extends Phaser.Scene {
   private keys?: Keys;
@@ -15,12 +18,14 @@ export class GameScene extends Phaser.Scene {
   private statusText?: Phaser.GameObjects.Text;
   private waveText?: Phaser.GameObjects.Text;
   private skeletonText?: Phaser.GameObjects.Text;
+  private healText?: Phaser.GameObjects.Text;
   private promptText?: Phaser.GameObjects.Text;
   private hearts: Phaser.GameObjects.Image[] = [];
   private awaitingNextWave = false;
   private defeat = false;
   private paused = false;
   private pausedAt = 0;
+  private healCooldownUntil = 0;
 
   constructor() {
     super('GameScene');
@@ -43,7 +48,8 @@ export class GameScene extends Phaser.Scene {
       a: Phaser.Input.Keyboard.KeyCodes.A,
       s: Phaser.Input.Keyboard.KeyCodes.S,
       d: Phaser.Input.Keyboard.KeyCodes.D,
-      esc: Phaser.Input.Keyboard.KeyCodes.ESC
+      esc: Phaser.Input.Keyboard.KeyCodes.ESC,
+      space: Phaser.Input.Keyboard.KeyCodes.SPACE
     }) as Keys;
     this.startGame();
   }
@@ -96,6 +102,10 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
+    if (Phaser.Input.Keyboard.JustDown(this.keys.space)) {
+      this.tryHeal(time);
+    }
+
     this.advanceFighterState(this.player, time, rightMouseDown);
     for (const skeleton of this.skeletons) {
       this.advanceFighterState(skeleton, time, false);
@@ -116,7 +126,7 @@ export class GameScene extends Phaser.Scene {
 
     this.resolveActiveAttacks(time);
     this.updateVisuals();
-    this.updateUi();
+    this.updateUi(time);
     this.leftMouseWasDown = leftMouseDown;
   }
 
@@ -168,6 +178,11 @@ export class GameScene extends Phaser.Scene {
       fontFamily: 'Arial',
       fontSize: '16px'
     }).setDepth(20);
+    this.healText = this.add.text(24, 67, '', {
+      color: '#86efac',
+      fontFamily: 'Arial',
+      fontSize: '14px'
+    }).setDepth(20);
     this.promptText = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2, '', {
       align: 'center',
       color: '#f8fafc',
@@ -187,6 +202,7 @@ export class GameScene extends Phaser.Scene {
     this.wave = 1;
     this.defeat = false;
     this.awaitingNextWave = false;
+    this.healCooldownUntil = 0;
     this.setPaused(false, this.time.now);
     this.promptText?.setText('');
     this.createPlayer();
@@ -493,6 +509,30 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private tryHeal(time: number) {
+    if (!this.player || this.player.state === 'dead') {
+      return;
+    }
+
+    if (this.player.hp >= PLAYER.maxHealth) {
+      this.statusText?.setText('Health is already full.');
+      return;
+    }
+
+    if (time < this.healCooldownUntil) {
+      const seconds = Math.ceil((this.healCooldownUntil - time) / 1000);
+      this.statusText?.setText(`Heal recharging: ${seconds}s remaining.`);
+      return;
+    }
+
+    const previousHealth = this.player.hp;
+    this.player.hp = Math.min(PLAYER.maxHealth, this.player.hp + HEAL_AMOUNT);
+    const restored = this.player.hp - previousHealth;
+    this.healCooldownUntil = time + HEAL_COOLDOWN_MS;
+    this.statusText?.setText(`Restored ${restored} health.`);
+    this.showHeal(this.positionOf(this.player));
+  }
+
   private isBlocking(target: Fighter, attackerPosition: Phaser.Math.Vector2) {
     if (target.state !== 'shield') {
       return false;
@@ -528,6 +568,36 @@ export class GameScene extends Phaser.Scene {
       scale: 1.8,
       duration: 180,
       onComplete: () => flash.destroy()
+    });
+  }
+
+  private showHeal(position: Phaser.Math.Vector2) {
+    const pulse = this.add.circle(position.x, position.y, 22, 0x22c55e, 0.28)
+      .setStrokeStyle(3, 0x86efac)
+      .setDepth(18);
+    const label = this.add.text(position.x, position.y - 30, `+${HEAL_AMOUNT}`, {
+      color: '#bbf7d0',
+      fontFamily: 'Arial',
+      fontSize: '20px',
+      fontStyle: 'bold',
+      stroke: '#052e16',
+      strokeThickness: 4
+    }).setOrigin(0.5).setDepth(19);
+
+    this.cameras.main.flash(120, 34, 197, 94, false);
+    this.tweens.add({
+      targets: pulse,
+      alpha: 0,
+      scale: 2.2,
+      duration: 420,
+      onComplete: () => pulse.destroy()
+    });
+    this.tweens.add({
+      targets: label,
+      alpha: 0,
+      y: label.y - 24,
+      duration: 650,
+      onComplete: () => label.destroy()
     });
   }
 
@@ -625,7 +695,7 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private updateUi() {
+  private updateUi(time: number) {
     if (!this.player) {
       return;
     }
@@ -636,8 +706,17 @@ export class GameScene extends Phaser.Scene {
       this.hearts[index].setAlpha(index < this.player.hp ? 1 : 0.25);
     }
 
+    if (this.player.hp >= PLAYER.maxHealth) {
+      this.healText?.setText('Space heal: Health full');
+    } else if (time < this.healCooldownUntil) {
+      const seconds = Math.ceil((this.healCooldownUntil - time) / 1000);
+      this.healText?.setText(`Space heal: Ready in ${seconds}s`);
+    } else {
+      this.healText?.setText(`Space heal: Ready (+${HEAL_AMOUNT} health)`);
+    }
+
     if (!this.defeat && !this.awaitingNextWave && this.statusText?.text === '') {
-      this.statusText.setText('WASD move | Left-click heavy attack | Right-click shield | ESC pause');
+      this.statusText.setText('WASD move | Mouse attack/shield | Space heal | ESC pause');
     }
     if (!this.awaitingNextWave && !this.defeat && !this.paused) {
       this.promptText?.setText('');
@@ -663,6 +742,7 @@ export class GameScene extends Phaser.Scene {
     this.physics.resume();
     this.tweens.resumeAll();
     this.shiftTimers(pausedFor);
+    this.healCooldownUntil += pausedFor;
     this.promptText?.setText('');
     this.statusText?.setText('');
     this.pausedAt = 0;

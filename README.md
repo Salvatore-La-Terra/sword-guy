@@ -18,6 +18,7 @@ Open the local URL printed by Vite to play the game.
 - **WASD**: move the knight, including diagonally
 - **Left mouse button**: perform a heavy sword attack toward the pointer
 - **Right mouse button**: raise the shield toward the pointer
+- **Space**: restore one health during combat (5-second cooldown)
 - **Esc**: pause or resume the game
 
 Fight armoured skeletons in a castle arena. Skeletons patrol, pursue the player
