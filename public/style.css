@@ -1,0 +1,29 @@
+:root {
+  color: #f5f7fa;
+  background: #0d141a;
+  font-family: monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#game-container {
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  overflow: hidden;
+}
+
+canvas {
+  display: block;
+  max-width: 100vw;
+  max-height: 100vh;
+}

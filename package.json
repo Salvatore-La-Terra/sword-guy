@@ -1,6 +1,6 @@
 {
-  "name": "phaser-browser-game",
   "version": "0.1.0",
+  "name": "sword-guy",
   "private": true,
   "type": "module",
   "scripts": {

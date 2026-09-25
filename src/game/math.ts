@@ -1,9 +1,6 @@
 import Phaser from 'phaser';
 
-export function angleBetween(
-  from: Phaser.Math.Vector2,
-  to: Phaser.Math.Vector2
-) {
+export function angleBetween(from: Phaser.Math.Vector2, to: Phaser.Math.Vector2) {
   return Phaser.Math.Angle.Between(from.x, from.y, to.x, to.y);
 }
 

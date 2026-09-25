@@ -1,38 +1,43 @@
 # Sword Guy
 
-Simple Phaser browser game built with Phaser, Vite, and TypeScript.
+A browser game built with Phaser, Vite, and TypeScript.
 
-## Requirements
+## Development
 
-- Node.js 20 or newer
-- npm
+Requirements: Node.js 20 or newer.
 
-## Getting started
-
-```bash
+```sh
 npm install
 npm run dev
 ```
 
 Open the local URL printed by Vite to play the game.
 
-## Scripts
+## Controls
 
-- `npm run dev` starts the local development server.
-- `npm run build` creates a production build in `dist`.
-- `npm run preview` serves the production build locally.
+- **WASD**: move the knight, including diagonally
+- **Left mouse button**: perform a heavy sword attack toward the pointer
+- **Right mouse button**: raise the shield toward the pointer
+- **Space**: restore one health during combat (5-second cooldown)
+- **Esc**: pause or resume the game
 
-## Game controls
+Fight armoured skeletons in a castle arena. Skeletons patrol, pursue the player
+when nearby, and can attack or guard. Unblocked sword hits stagger opponents;
+the player and skeletons lose health until they are defeated. Clear a wave and
+left-click to start a harder one.
 
-- `W`, `A`, `S`, `D` move the knight, including diagonals.
-- Left mouse button performs a heavy sword attack toward the pointer.
-- Right mouse button raises the shield toward the pointer.
-- `Esc` pauses and un-pauses the game.
+## Production build
 
-## Current gameplay loop
+```sh
+npm run build
+npm run preview
+```
 
-Fight armoured skeletons in a large castle arena. Skeletons spawn far enough away that they do not aggro immediately, patrol nearby positions, chase when close, and can attack or guard. Sword hits stagger targets away from the attacker. Skeletons die after two unblocked hits. The player loses after five unblocked hits. Clearing all skeletons waits for a left-click before starting a harder wave with more enemies.
+The game source is under `src/game`, and static assets belong in
+`public/assets`.
 
-## Suggested workflow
+## Collaboration
 
-Create feature branches from `main`, open pull requests for review, and keep `main` stable.
+Create a feature branch from `main`, keep commits focused, and open a pull
+request for review before merging. Do not commit generated `node_modules` or
+`dist` directories.
