@@ -173,6 +173,126 @@ function createCharacterFrames(scene: Phaser.Scene, prefix: string, palette: Cha
   }
 }
 
+// Floor cracks, blood puddles, and skulls are drawn as small transparent
+// decal textures so they can be scattered on top of the tiled floor without
+// altering the base tile itself.
+function createFloorDecals(scene: Phaser.Scene) {
+  withGraphics(scene, graphics => {
+    graphics.lineStyle(2, 0x1e293b, 0.65);
+    graphics.beginPath();
+    graphics.moveTo(4, 6);
+    graphics.lineTo(16, 18);
+    graphics.lineTo(12, 30);
+    graphics.lineTo(22, 40);
+    graphics.strokePath();
+    graphics.lineStyle(1, 0x1e293b, 0.4);
+    graphics.lineBetween(16, 18, 26, 14);
+    graphics.generateTexture('floor-crack-a', 40, 44);
+  });
+
+  withGraphics(scene, graphics => {
+    graphics.lineStyle(2, 0x1e293b, 0.6);
+    graphics.beginPath();
+    graphics.moveTo(30, 4);
+    graphics.lineTo(20, 14);
+    graphics.lineTo(24, 26);
+    graphics.lineTo(10, 32);
+    graphics.strokePath();
+    graphics.lineStyle(1, 0x1e293b, 0.35);
+    graphics.lineBetween(24, 26, 32, 30);
+    graphics.generateTexture('floor-crack-b', 40, 40);
+  });
+
+  withGraphics(scene, graphics => {
+    graphics.fillStyle(0x450a0a, 0.55).fillEllipse(20, 20, 34, 22);
+    graphics.fillStyle(0x7f1d1d, 0.45).fillEllipse(14, 16, 14, 10);
+    graphics.fillStyle(0x7f1d1d, 0.4).fillEllipse(28, 24, 12, 8);
+    graphics.fillStyle(0x991b1b, 0.3).fillEllipse(20, 20, 20, 12);
+    graphics.generateTexture('floor-blood-a', 40, 40);
+  });
+
+  withGraphics(scene, graphics => {
+    graphics.fillStyle(0x450a0a, 0.5).fillEllipse(14, 14, 22, 16);
+    graphics.fillStyle(0x7f1d1d, 0.4).fillEllipse(18, 12, 10, 7);
+    graphics.generateTexture('floor-blood-b', 28, 28);
+  });
+
+  withGraphics(scene, graphics => {
+    graphics.fillStyle(0x000000, 0.25).fillEllipse(14, 22, 16, 6);
+    graphics.fillStyle(0xe5e7eb, 0.92).fillEllipse(14, 14, 15, 12);
+    graphics.fillStyle(0xd1d5db).fillRoundedRect(8, 18, 12, 7, 2);
+    graphics.fillStyle(0x1f2937).fillEllipse(9, 13, 4, 5).fillEllipse(19, 13, 4, 5);
+    graphics.fillStyle(0x1f2937).fillTriangle(14, 15, 12, 19, 16, 19);
+    graphics.generateTexture('floor-skull', 28, 28);
+  });
+}
+
+function createWallVariants(scene: Phaser.Scene) {
+  withGraphics(scene, graphics => {
+    graphics.fillStyle(0x334155).fillRoundedRect(0, 0, 64, 64, 7);
+    graphics.fillStyle(0x1e293b).fillRect(0, 48, 64, 16);
+    graphics.lineStyle(2, 0x64748b);
+    graphics.strokeRoundedRect(2, 2, 60, 60, 7);
+    graphics.generateTexture('wall-block', 64, 64);
+  });
+
+  withGraphics(scene, graphics => {
+    graphics.fillStyle(0x334155).fillRoundedRect(0, 0, 64, 64, 7);
+    graphics.fillStyle(0x1e293b).fillRect(0, 48, 64, 16);
+    graphics.lineStyle(2, 0x64748b);
+    graphics.strokeRoundedRect(2, 2, 60, 60, 7);
+    graphics.lineStyle(1, 0x0f172a, 0.7);
+    graphics.lineBetween(10, 6, 22, 30);
+    graphics.lineBetween(22, 30, 16, 48);
+    graphics.lineBetween(40, 4, 34, 24);
+    graphics.fillStyle(0x365314, 0.55).fillEllipse(48, 44, 18, 12);
+    graphics.fillStyle(0x3f6212, 0.4).fillEllipse(52, 50, 12, 8);
+    graphics.generateTexture('wall-block-worn', 64, 64);
+  });
+}
+
+function createFurniture(scene: Phaser.Scene) {
+  withGraphics(scene, graphics => {
+    graphics.fillStyle(0x000000, 0.28).fillEllipse(36, 36, 64, 20);
+    drawOutlinedRoundRect(graphics, 2, 6, 68, 28, 4, 0x92400e);
+    graphics.fillStyle(0x78350f).fillRect(6, 10, 60, 3);
+    graphics.fillStyle(0x78350f).fillRect(6, 27, 60, 3);
+    graphics.fillStyle(0x451a03).fillRect(6, 8, 3, 24).fillRect(63, 8, 3, 24);
+    graphics.generateTexture('furniture-table', 72, 40);
+  });
+
+  withGraphics(scene, graphics => {
+    graphics.fillStyle(0x000000, 0.28).fillEllipse(17, 30, 28, 10);
+    drawOutlinedRoundRect(graphics, 1, 1, 32, 30, 3, 0x92400e);
+    graphics.lineStyle(1, 0x451a03, 0.8);
+    graphics.lineBetween(1, 10, 33, 10);
+    graphics.lineBetween(1, 16, 33, 16);
+    graphics.lineBetween(1, 22, 33, 22);
+    graphics.lineBetween(11, 1, 11, 31);
+    graphics.lineBetween(23, 1, 23, 31);
+    graphics.generateTexture('furniture-crate', 34, 34);
+  });
+
+  withGraphics(scene, graphics => {
+    graphics.fillStyle(0x000000, 0.28).fillEllipse(15, 30, 24, 8);
+    drawOutlinedCircle(graphics, 15, 15, 14, 0x854d0e);
+    graphics.fillStyle(0x451a03).fillRect(1, 8, 28, 3).fillRect(1, 20, 28, 3);
+    graphics.fillStyle(0x92400e, 0.6).fillEllipse(15, 12, 16, 5);
+    graphics.generateTexture('furniture-barrel', 30, 34);
+  });
+
+  withGraphics(scene, graphics => {
+    graphics.fillStyle(0x000000, 0.26).fillEllipse(20, 34, 36, 12);
+    graphics.fillStyle(0x57534e).fillEllipse(20, 18, 30, 24);
+    graphics.fillStyle(0x78716c).fillEllipse(16, 12, 16, 12);
+    graphics.fillStyle(0x44403c).fillEllipse(26, 24, 14, 10);
+    graphics.lineStyle(1, 0x1c1917, 0.6);
+    graphics.lineBetween(10, 12, 20, 24);
+    graphics.lineBetween(24, 8, 18, 20);
+    graphics.generateTexture('furniture-pillar', 40, 40);
+  });
+}
+
 export function createGeneratedAssets(scene: Phaser.Scene) {
   if (scene.textures.exists('player-knight-down-idle-0')) {
     return;
@@ -190,13 +310,9 @@ export function createGeneratedAssets(scene: Phaser.Scene) {
     graphics.generateTexture('floor-tile', 32, 32);
   });
 
-  withGraphics(scene, graphics => {
-    graphics.fillStyle(0x334155).fillRoundedRect(0, 0, 64, 64, 7);
-    graphics.fillStyle(0x1e293b).fillRect(0, 48, 64, 16);
-    graphics.lineStyle(2, 0x64748b);
-    graphics.strokeRoundedRect(2, 2, 60, 60, 7);
-    graphics.generateTexture('wall-block', 64, 64);
-  });
+  createFloorDecals(scene);
+  createWallVariants(scene);
+  createFurniture(scene);
 
   createCharacterFrames(scene, 'player-knight', {
     armor: 0x1d4ed8,
