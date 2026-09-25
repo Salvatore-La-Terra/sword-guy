@@ -1,18 +1,19 @@
 {
+  "version": "0.1.0",
   "name": "sword-guy",
   "private": true,
-  "version": "0.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
-    "phaser": "^4.0.0"
+    "phaser": "^3.90.0"
   },
   "devDependencies": {
-    "typescript": "^5.7.2",
-    "vite": "^6.3.1"
+    "@types/node": "^24.5.2",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.7"
   }
 }

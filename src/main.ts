@@ -1,9 +1,20 @@
-import { startGame } from './game/main';
+import Phaser from 'phaser';
+import { GAME_HEIGHT, GAME_WIDTH } from './game/constants';
+import { GameScene } from './scenes/GameScene';
 
-const gameContainer = document.querySelector<HTMLElement>('#game-container');
+const config: Phaser.Types.Core.GameConfig = {
+  type: Phaser.AUTO,
+  parent: 'game',
+  width: GAME_WIDTH,
+  height: GAME_HEIGHT,
+  backgroundColor: '#111827',
+  physics: {
+    default: 'arcade',
+    arcade: {
+      debug: false
+    }
+  },
+  scene: [GameScene]
+};
 
-if (!gameContainer) {
-  throw new Error('Game container was not found.');
-}
-
-startGame(gameContainer);
+new Phaser.Game(config);

@@ -1,6 +1,6 @@
 # Sword Guy
 
-A browser game prototype built with Phaser, Vite, and TypeScript.
+A browser game built with Phaser, Vite, and TypeScript.
 
 ## Development
 
@@ -11,16 +11,19 @@ npm install
 npm run dev
 ```
 
-Open the local URL printed by Vite.
+Open the local URL printed by Vite to play the game.
 
 ## Controls
 
-- **WASD** or **arrow keys**: move
-- **Space**: swing the sword in the last movement direction
-- **R**: restart after game over
+- **WASD**: move the knight, including diagonally
+- **Left mouse button**: perform a heavy sword attack toward the pointer
+- **Right mouse button**: raise the shield toward the pointer
+- **Esc**: pause or resume the game
 
-Enemies enter from the arena edges and pursue the player. Defeat them with the
-sword, avoid contact damage, and survive as long as possible.
+Fight armoured skeletons in a castle arena. Skeletons patrol, pursue the player
+when nearby, and can attack or guard. Unblocked sword hits stagger opponents;
+the player and skeletons lose health until they are defeated. Clear a wave and
+left-click to start a harder one.
 
 ## Production build
 
