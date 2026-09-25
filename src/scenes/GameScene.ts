@@ -6,7 +6,7 @@ import {
   spawnHealEffect,
   spawnHitEffect
 } from '../game/combatEffects';
-import { ARENA, COMBAT, GAME_HEIGHT, GAME_WIDTH, PLAYER, SKELETON } from '../game/constants';
+import { ARENA, COMBAT, FURNITURE, GAME_HEIGHT, GAME_WIDTH, PLAYER, SKELETON } from '../game/constants';
 import { angleBetween, angleDifference, directionFromAngle } from '../game/math';
 import { SceneTransitions } from '../game/sceneTransitions';
 import { createScoreFeedback, type ScoreFeedback } from '../game/scoreFeedback';
@@ -36,6 +36,9 @@ export class GameScene extends Phaser.Scene {
   private transitions?: SceneTransitions;
   private hearts: Phaser.GameObjects.Image[] = [];
   private characterColliders: Phaser.Physics.Arcade.Collider[] = [];
+  private obstacleGroup?: Phaser.Physics.Arcade.StaticGroup;
+  private obstacles: { center: Phaser.Math.Vector2; radius: number }[] = [];
+  private playerObstacleCollider?: Phaser.Physics.Arcade.Collider;
   private awaitingNextWave = false;
   private defeat = false;
   private paused = false;
@@ -161,18 +164,21 @@ export class GameScene extends Phaser.Scene {
       'floor-tile'
     );
 
+    this.scatterFloorDecals();
+
     this.add.rectangle(GAME_WIDTH / 2, 40, GAME_WIDTH, 80, 0x111827);
     this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT - 30, GAME_WIDTH, 60, 0x111827);
     this.add.rectangle(22, GAME_HEIGHT / 2, 44, GAME_HEIGHT, 0x111827);
     this.add.rectangle(GAME_WIDTH - 22, GAME_HEIGHT / 2, 44, GAME_HEIGHT, 0x111827);
 
+    const wallTexture = () => (Phaser.Math.Between(1, 5) === 1 ? 'wall-block-worn' : 'wall-block');
     for (let x = 48; x <= GAME_WIDTH - 48; x += 64) {
-      this.add.image(x, 42, 'wall-block');
-      this.add.image(x, GAME_HEIGHT - 22, 'wall-block');
+      this.add.image(x, 42, wallTexture());
+      this.add.image(x, GAME_HEIGHT - 22, wallTexture());
     }
     for (let y = 112; y <= GAME_HEIGHT - 108; y += 64) {
-      this.add.image(24, y, 'wall-block');
-      this.add.image(GAME_WIDTH - 24, y, 'wall-block');
+      this.add.image(24, y, wallTexture());
+      this.add.image(GAME_WIDTH - 24, y, wallTexture());
     }
 
     this.add.rectangle(GAME_WIDTH / 2, ARENA.top, 520, 8, 0x94a3b8, 0.55);
@@ -182,6 +188,47 @@ export class GameScene extends Phaser.Scene {
       fontFamily: 'Georgia',
       fontSize: '18px'
     }).setOrigin(0.5);
+
+    this.createFurniture();
+  }
+
+  private scatterFloorDecals() {
+    const rng = new Phaser.Math.RandomDataGenerator(['arena-decor']);
+    const cracks = ['floor-crack-a', 'floor-crack-b'];
+    const bloods = ['floor-blood-a', 'floor-blood-b'];
+    const decalCount = 22;
+
+    for (let index = 0; index < decalCount; index += 1) {
+      const x = rng.between(ARENA.left + 40, ARENA.right - 40);
+      const y = rng.between(ARENA.top + 40, ARENA.bottom - 40);
+      const roll = rng.frac();
+
+      if (roll < 0.5) {
+        const texture = rng.pick(cracks);
+        this.add.image(x, y, texture).setAlpha(0.8).setRotation(rng.rotation());
+      } else if (roll < 0.82) {
+        const texture = rng.pick(bloods);
+        this.add.image(x, y, texture).setRotation(rng.rotation());
+      } else {
+        this.add.image(x, y, 'floor-skull').setRotation(rng.between(-20, 20) * 0.02);
+      }
+    }
+  }
+
+  private createFurniture() {
+    this.obstacleGroup = this.physics.add.staticGroup();
+    this.obstacles = [];
+
+    for (const item of FURNITURE) {
+      const sprite = this.obstacleGroup.create(item.x, item.y, item.key) as Phaser.Physics.Arcade.Sprite;
+      sprite.setSize(item.width, item.height);
+      sprite.refreshBody();
+
+      this.obstacles.push({
+        center: new Phaser.Math.Vector2(item.x, item.y),
+        radius: Math.hypot(item.width, item.height) / 2
+      });
+    }
   }
 
   private createUi() {
@@ -269,6 +316,11 @@ export class GameScene extends Phaser.Scene {
       attackDirection: -Math.PI / 2,
       attackHitIds: new Set<string>()
     };
+
+    this.playerObstacleCollider?.destroy();
+    if (this.obstacleGroup) {
+      this.playerObstacleCollider = this.physics.add.collider(sprite, this.obstacleGroup);
+    }
   }
 
   private startWave() {
@@ -427,7 +479,46 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     direction.normalize();
+
+    const avoidance = this.obstacleAvoidance(position, direction);
+    if (avoidance) {
+      direction.add(avoidance).normalize();
+    }
+
     fighter.sprite.setVelocity(direction.x * speed, direction.y * speed);
+  }
+
+  // Simple lookahead steering: skeletons walk straight toward their target
+  // but veer sideways around any obstacle that sits close to their path, so
+  // patrol and chase routes flow around furniture instead of getting stuck
+  // pressed against it.
+  private obstacleAvoidance(position: Phaser.Math.Vector2, direction: Phaser.Math.Vector2) {
+    const lookAhead = 90;
+    const fighterRadius = 20;
+    let steer: Phaser.Math.Vector2 | null = null;
+
+    for (const obstacle of this.obstacles) {
+      const toObstacle = obstacle.center.clone().subtract(position);
+      const along = toObstacle.dot(direction);
+      if (along <= 0 || along > lookAhead + obstacle.radius) {
+        continue;
+      }
+
+      const closest = position.clone().add(direction.clone().scale(along));
+      const perpDistance = closest.distance(obstacle.center);
+      const safeDistance = obstacle.radius + fighterRadius;
+      if (perpDistance >= safeDistance) {
+        continue;
+      }
+
+      const perpendicular = new Phaser.Math.Vector2(-direction.y, direction.x);
+      const side = perpendicular.dot(toObstacle) > 0 ? -1 : 1;
+      const strength = (safeDistance - perpDistance) / safeDistance;
+      const contribution = perpendicular.scale(side * strength * 1.6);
+      steer = steer ? steer.add(contribution) : contribution;
+    }
+
+    return steer;
   }
 
   private canAttack(fighter: Fighter) {
@@ -921,6 +1012,12 @@ export class GameScene extends Phaser.Scene {
         this.characterColliders.push(
           this.physics.add.collider(this.skeletons[outer].sprite, this.skeletons[inner].sprite)
         );
+      }
+    }
+
+    if (this.obstacleGroup) {
+      for (const skeleton of this.skeletons) {
+        this.characterColliders.push(this.physics.add.collider(skeleton.sprite, this.obstacleGroup));
       }
     }
   }
