@@ -1,10 +1,19 @@
 import Phaser from 'phaser';
 import { createGeneratedAssets } from '../game/assets';
+import {
+  spawnBlockEffect,
+  spawnDeathEffect,
+  spawnHealEffect,
+  spawnHitEffect
+} from '../game/combatEffects';
 import { ARENA, COMBAT, GAME_HEIGHT, GAME_WIDTH, PLAYER, SKELETON } from '../game/constants';
-import type { Fighter, Player, Skeleton } from '../game/types';
 import { angleBetween, angleDifference, directionFromAngle } from '../game/math';
+import { SceneTransitions } from '../game/sceneTransitions';
+import { createScoreFeedback, type ScoreFeedback } from '../game/scoreFeedback';
+import { isSoundMuted, playSound, toggleSoundMuted, unlockSound } from '../game/sound';
+import type { Fighter, Player, Skeleton } from '../game/types';
 
-type Keys = Record<'w' | 'a' | 's' | 'd' | 'esc' | 'space', Phaser.Input.Keyboard.Key>;
+type Keys = Record<'w' | 'a' | 's' | 'd' | 'esc' | 'space' | 'm', Phaser.Input.Keyboard.Key>;
 type VisualDirection = 'down' | 'up' | 'side';
 
 const HEAL_AMOUNT = 1;
@@ -20,7 +29,11 @@ export class GameScene extends Phaser.Scene {
   private waveText?: Phaser.GameObjects.Text;
   private skeletonText?: Phaser.GameObjects.Text;
   private healText?: Phaser.GameObjects.Text;
+  private scoreText?: Phaser.GameObjects.Text;
+  private soundText?: Phaser.GameObjects.Text;
   private promptText?: Phaser.GameObjects.Text;
+  private scoreFeedback?: ScoreFeedback;
+  private transitions?: SceneTransitions;
   private hearts: Phaser.GameObjects.Image[] = [];
   private characterColliders: Phaser.Physics.Arcade.Collider[] = [];
   private awaitingNextWave = false;
@@ -45,13 +58,15 @@ export class GameScene extends Phaser.Scene {
 
     this.createArena();
     this.createUi();
+    this.transitions = new SceneTransitions(this);
     this.keys = this.input.keyboard?.addKeys({
       w: Phaser.Input.Keyboard.KeyCodes.W,
       a: Phaser.Input.Keyboard.KeyCodes.A,
       s: Phaser.Input.Keyboard.KeyCodes.S,
       d: Phaser.Input.Keyboard.KeyCodes.D,
       esc: Phaser.Input.Keyboard.KeyCodes.ESC,
-      space: Phaser.Input.Keyboard.KeyCodes.SPACE
+      space: Phaser.Input.Keyboard.KeyCodes.SPACE,
+      m: Phaser.Input.Keyboard.KeyCodes.M
     }) as Keys;
     this.startGame();
   }
@@ -67,6 +82,11 @@ export class GameScene extends Phaser.Scene {
     const pointerDirection = angleBetween(playerPos, pointerPos);
     const leftMouseDown = pointer.leftButtonDown();
     const rightMouseDown = pointer.rightButtonDown();
+
+    if (Phaser.Input.Keyboard.JustDown(this.keys.m)) {
+      const muted = toggleSoundMuted();
+      this.soundText?.setText(`Sound: ${muted ? 'Off' : 'On'} (M)`);
+    }
 
     if (Phaser.Input.Keyboard.JustDown(this.keys.esc)) {
       this.setPaused(!this.paused, time);
@@ -185,6 +205,17 @@ export class GameScene extends Phaser.Scene {
       fontFamily: 'Arial',
       fontSize: '14px'
     }).setDepth(20);
+    this.scoreText = this.add.text(GAME_WIDTH - 190, 47, '', {
+      color: '#facc15',
+      fontFamily: 'Arial',
+      fontSize: '18px'
+    }).setDepth(20);
+    this.soundText = this.add.text(GAME_WIDTH - 190, 70, '', {
+      color: '#94a3b8',
+      fontFamily: 'Arial',
+      fontSize: '13px'
+    }).setDepth(20);
+    this.scoreFeedback = createScoreFeedback(this, this.scoreText);
     this.promptText = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2, '', {
       align: 'center',
       color: '#f8fafc',
@@ -205,10 +236,12 @@ export class GameScene extends Phaser.Scene {
     this.defeat = false;
     this.awaitingNextWave = false;
     this.healCooldownUntil = 0;
+    this.scoreFeedback?.reset();
     this.setPaused(false, this.time.now);
     this.promptText?.setText('');
     this.createPlayer();
     this.startWave();
+    this.transitions?.playRestart();
   }
 
   private createPlayer() {
@@ -259,6 +292,8 @@ export class GameScene extends Phaser.Scene {
       this.skeletons.push(this.createSkeleton(index, point));
     }
     this.setupCharacterCollisions();
+    this.transitions?.playWaveStart(this.wave);
+    playSound('waveStart');
   }
 
   private createSkeleton(index: number, point: Phaser.Math.Vector2): Skeleton {
@@ -410,6 +445,10 @@ export class GameScene extends Phaser.Scene {
     fighter.attackHitIds.clear();
     fighter.state = 'windup';
     fighter.stateEndsAt = time + COMBAT.windupMs;
+    if (fighter.id === 'player') {
+      unlockSound();
+      playSound('attack');
+    }
   }
 
   private beginShield(fighter: Fighter, direction: number, until = Number.POSITIVE_INFINITY) {
@@ -496,11 +535,15 @@ export class GameScene extends Phaser.Scene {
 
     if (this.isBlocking(target, attackerPos)) {
       this.showBlock(targetPos);
+      spawnBlockEffect(this, targetPos);
+      playSound('block');
       this.applyPush(attacker, target, COMBAT.blockPushSpeed, COMBAT.blockStaggerMs, time);
       return;
     }
 
     target.hp -= 1;
+    spawnHitEffect(this, targetPos, targetDirection);
+    playSound('hit');
     this.cameras.main.shake(80, target.id === 'player' ? 0.007 : 0.004);
     this.applyPush(target, attacker, PLAYER.staggerSpeed, COMBAT.staggerMs, time);
 
@@ -539,6 +582,8 @@ export class GameScene extends Phaser.Scene {
     this.healCooldownUntil = time + HEAL_COOLDOWN_MS;
     this.statusText?.setText(`Restored ${restored} health.`);
     this.showHeal(this.positionOf(this.player));
+    spawnHealEffect(this, this.positionOf(this.player));
+    playSound('heal');
   }
 
   private isBlocking(target: Fighter, attackerPosition: Phaser.Math.Vector2) {
@@ -610,6 +655,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private killSkeleton(skeleton: Skeleton) {
+    const deathPosition = this.positionOf(skeleton);
     skeleton.state = 'dead';
     skeleton.sprite.setTexture(`${skeleton.texturePrefix}-down-die-0`);
     skeleton.sprite.setTint(0x7f1d1d);
@@ -622,6 +668,9 @@ export class GameScene extends Phaser.Scene {
         skeleton.sprite.setTexture(`${skeleton.texturePrefix}-down-die-1`);
       }
     });
+    spawnDeathEffect(this, deathPosition);
+    this.scoreFeedback?.add(100, deathPosition);
+    playSound('kill');
     this.tweens.add({
       targets: skeleton.sprite,
       alpha: 0,
@@ -644,8 +693,14 @@ export class GameScene extends Phaser.Scene {
 
   private winWave() {
     this.awaitingNextWave = true;
+    this.scoreFeedback?.add(this.wave * 250, {
+      x: GAME_WIDTH / 2,
+      y: GAME_HEIGHT / 2 - 70
+    });
     this.promptText?.setText(`Wave ${this.wave} cleared!\nLeft-click for the next level.`);
     this.statusText?.setText('Victory. Choose when to continue.');
+    this.transitions?.playWaveClear(this.wave);
+    playSound('waveClear');
   }
 
   private loseGame() {
@@ -657,6 +712,8 @@ export class GameScene extends Phaser.Scene {
     this.player.sprite.setVelocity(0);
     this.player.sprite.setTint(0x7f1d1d);
     this.promptText?.setText('You died.\nLeft-click to restart.');
+    this.transitions?.playDefeat();
+    playSound('defeat');
   }
 
   private updateVisuals(time: number) {
@@ -783,6 +840,7 @@ export class GameScene extends Phaser.Scene {
 
     this.waveText?.setText(`Wave ${this.wave}`);
     this.skeletonText?.setText(`Skeletons: ${this.skeletons.length}`);
+    this.soundText?.setText(`Sound: ${isSoundMuted() ? 'Off' : 'On'} (M)`);
     for (let index = 0; index < this.hearts.length; index += 1) {
       this.hearts[index].setAlpha(index < this.player.hp ? 1 : 0.25);
     }

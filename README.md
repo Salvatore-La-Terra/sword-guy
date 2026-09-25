@@ -19,12 +19,15 @@ Open the local URL printed by Vite to play the game.
 - **Left mouse button**: perform a heavy sword attack toward the pointer
 - **Right mouse button**: raise the shield toward the pointer
 - **Space**: restore one health during combat (5-second cooldown)
+- **M**: mute or unmute generated sound effects
 - **Esc**: pause or resume the game
 
 Fight armoured skeletons in a castle arena. Skeletons patrol, pursue the player
 when nearby, and can attack or guard. Unblocked sword hits stagger opponents;
 the player and skeletons lose health until they are defeated. Clear a wave and
-left-click to start a harder one.
+left-click to start a harder one. Defeating enemies and clearing waves awards
+score, with restrained particles, transitions, and generated sound cues
+providing gameplay feedback.
 
 ## Production build
 
