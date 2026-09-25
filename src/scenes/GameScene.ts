@@ -5,6 +5,7 @@ import type { Fighter, Player, Skeleton } from '../game/types';
 import { angleBetween, angleDifference, directionFromAngle } from '../game/math';
 
 type Keys = Record<'w' | 'a' | 's' | 'd' | 'esc', Phaser.Input.Keyboard.Key>;
+type VisualDirection = 'down' | 'up' | 'side';
 
 export class GameScene extends Phaser.Scene {
   private keys?: Keys;
@@ -17,6 +18,7 @@ export class GameScene extends Phaser.Scene {
   private skeletonText?: Phaser.GameObjects.Text;
   private promptText?: Phaser.GameObjects.Text;
   private hearts: Phaser.GameObjects.Image[] = [];
+  private characterColliders: Phaser.Physics.Arcade.Collider[] = [];
   private awaitingNextWave = false;
   private defeat = false;
   private paused = false;
@@ -89,8 +91,8 @@ export class GameScene extends Phaser.Scene {
         this.player.shield.setVisible(false);
         this.player.sprite.setVelocity(0);
         this.player.state = 'idle';
-      this.wave += 1;
-      this.startWave();
+        this.wave += 1;
+        this.startWave();
       }
       this.leftMouseWasDown = leftMouseDown;
       return;
@@ -115,7 +117,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.resolveActiveAttacks(time);
-    this.updateVisuals();
+    this.updateVisuals(time);
     this.updateUi();
     this.leftMouseWasDown = leftMouseDown;
   }
@@ -199,9 +201,10 @@ export class GameScene extends Phaser.Scene {
     this.player?.shield.destroy();
 
     const start = this.playerStart();
-    const sprite = this.physics.add.sprite(start.x, start.y, 'player-knight');
-    sprite.setCircle(17, 5, 13);
+    const sprite = this.physics.add.sprite(start.x, start.y, 'player-knight-down-idle-0');
+    sprite.setCircle(18, 6, 17);
     sprite.setCollideWorldBounds(true);
+    sprite.setBounce(0.05);
     sprite.setDepth(10);
 
     this.player = {
@@ -209,6 +212,7 @@ export class GameScene extends Phaser.Scene {
       sprite,
       sword: this.add.image(start.x, start.y, 'sword-heavy').setVisible(false).setDepth(13),
       shield: this.add.image(start.x, start.y, 'shield-kite').setVisible(false).setDepth(14),
+      texturePrefix: 'player-knight',
       hp: PLAYER.maxHealth,
       facing: -Math.PI / 2,
       state: 'idle',
@@ -219,6 +223,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private startWave() {
+    this.clearCharacterColliders();
     for (const skeleton of this.skeletons) {
       this.destroySkeleton(skeleton);
     }
@@ -237,12 +242,14 @@ export class GameScene extends Phaser.Scene {
       const point = this.spawnPointFor(index, start);
       this.skeletons.push(this.createSkeleton(index, point));
     }
+    this.setupCharacterCollisions();
   }
 
   private createSkeleton(index: number, point: Phaser.Math.Vector2): Skeleton {
-    const sprite = this.physics.add.sprite(point.x, point.y, 'armoured-skeleton');
-    sprite.setCircle(17, 5, 16);
+    const sprite = this.physics.add.sprite(point.x, point.y, 'armoured-skeleton-down-idle-0');
+    sprite.setCircle(18, 6, 18);
     sprite.setCollideWorldBounds(true);
+    sprite.setBounce(0.05);
     sprite.setDepth(9);
 
     return {
@@ -250,6 +257,7 @@ export class GameScene extends Phaser.Scene {
       sprite,
       sword: this.add.image(point.x, point.y, 'sword-heavy').setVisible(false).setDepth(12),
       shield: this.add.image(point.x, point.y, 'shield-kite').setVisible(false).setDepth(11),
+      texturePrefix: 'armoured-skeleton',
       hp: SKELETON.health,
       facing: Math.PI / 2,
       state: 'idle',
@@ -533,15 +541,22 @@ export class GameScene extends Phaser.Scene {
 
   private killSkeleton(skeleton: Skeleton) {
     skeleton.state = 'dead';
+    skeleton.sprite.setTexture(`${skeleton.texturePrefix}-down-die-0`);
     skeleton.sprite.setTint(0x7f1d1d);
     skeleton.sprite.setVelocity(0);
+    skeleton.sprite.body.enable = false;
     skeleton.sword.setVisible(false);
     skeleton.shield.setVisible(false);
+    this.time.delayedCall(180, () => {
+      if (skeleton.sprite.active) {
+        skeleton.sprite.setTexture(`${skeleton.texturePrefix}-down-die-1`);
+      }
+    });
     this.tweens.add({
       targets: skeleton.sprite,
       alpha: 0,
-      scale: 0.6,
-      duration: 260,
+      scale: 0.72,
+      duration: 620,
       onComplete: () => this.destroySkeleton(skeleton)
     });
 
@@ -574,40 +589,46 @@ export class GameScene extends Phaser.Scene {
     this.promptText?.setText('You died.\nLeft-click to restart.');
   }
 
-  private updateVisuals() {
+  private updateVisuals(time: number) {
     if (this.player) {
-      this.updateFighterVisuals(this.player);
+      this.updateFighterVisuals(this.player, time);
     }
     for (const skeleton of this.skeletons) {
-      this.updateFighterVisuals(skeleton);
+      this.updateFighterVisuals(skeleton, time);
     }
   }
 
-  private updateFighterVisuals(fighter: Fighter) {
+  private updateFighterVisuals(fighter: Fighter, time: number) {
+    const facingAngle = this.visualFacingAngle(fighter);
+    const visualDirection = this.visualDirectionFor(facingAngle);
     const direction = directionFromAngle(fighter.attackDirection);
-    fighter.sprite.setRotation(fighter.facing + Math.PI / 2);
+    fighter.sprite.setTexture(this.textureFor(fighter, time, visualDirection));
+    fighter.sprite.setFlipX(visualDirection === 'side' && Math.cos(facingAngle) < 0);
+    fighter.sprite.setRotation(0);
 
     const swordVisible = fighter.state === 'windup' || fighter.state === 'active' || fighter.state === 'recovery';
     fighter.sword.setVisible(swordVisible);
     if (swordVisible) {
-      const distance = fighter.state === 'windup' ? 19 : 30;
+      const distance = fighter.state === 'windup' ? 20 : 33;
+      const sideLift = visualDirection === 'up' ? -6 : visualDirection === 'down' ? 6 : 0;
       fighter.sword.setPosition(
         fighter.sprite.x + direction.x * distance,
-        fighter.sprite.y + direction.y * distance
+        fighter.sprite.y + direction.y * distance + sideLift
       );
       fighter.sword.setRotation(
         fighter.attackDirection + (fighter.state === 'windup' ? -0.72 : 0.18)
       );
       fighter.sword.setAlpha(fighter.state === 'active' ? 1 : 0.45);
-      fighter.sword.setScale(fighter.state === 'active' ? 1.05 : 0.86);
+      fighter.sword.setScale(fighter.state === 'active' ? 0.95 : 0.78);
     }
 
     const shieldVisible = fighter.state === 'shield';
     fighter.shield.setVisible(shieldVisible);
     if (shieldVisible) {
+      const shieldOffset = this.shieldOffsetFor(visualDirection, Math.cos(facingAngle) < 0);
       fighter.shield.setPosition(
-        fighter.sprite.x + direction.x * 24,
-        fighter.sprite.y + direction.y * 24
+        fighter.sprite.x + shieldOffset.x,
+        fighter.sprite.y + shieldOffset.y
       );
       fighter.shield.setRotation(fighter.attackDirection + Math.PI / 2);
     }
@@ -623,6 +644,66 @@ export class GameScene extends Phaser.Scene {
     } else if (fighter.state !== 'dead') {
       fighter.sprite.clearTint();
     }
+  }
+
+  private textureFor(fighter: Fighter, time: number, direction: VisualDirection) {
+    if (fighter.state === 'dead') {
+      return `${fighter.texturePrefix}-${direction}-die-1`;
+    }
+    if (fighter.state === 'stagger') {
+      return `${fighter.texturePrefix}-${direction}-hit-0`;
+    }
+    if (fighter.state === 'shield') {
+      return `${fighter.texturePrefix}-${direction}-shield-0`;
+    }
+    if (fighter.state === 'windup') {
+      return `${fighter.texturePrefix}-${direction}-attack-0`;
+    }
+    if (fighter.state === 'active') {
+      return `${fighter.texturePrefix}-${direction}-attack-1`;
+    }
+    if (fighter.state === 'recovery') {
+      return `${fighter.texturePrefix}-${direction}-attack-2`;
+    }
+
+    const moving = fighter.sprite.body.velocity.lengthSq() > 4;
+    if (moving) {
+      return `${fighter.texturePrefix}-${direction}-walk-${Math.floor(time / 130) % 4}`;
+    }
+    return `${fighter.texturePrefix}-${direction}-idle-0`;
+  }
+
+  private visualFacingAngle(fighter: Fighter) {
+    if (
+      fighter.state === 'windup' ||
+      fighter.state === 'active' ||
+      fighter.state === 'recovery' ||
+      fighter.state === 'shield'
+    ) {
+      return fighter.attackDirection;
+    }
+    return fighter.facing;
+  }
+
+  private visualDirectionFor(angle: number): VisualDirection {
+    const normalized = Phaser.Math.Angle.Wrap(angle);
+    if (normalized > Math.PI / 4 && normalized < Math.PI * 3 / 4) {
+      return 'down';
+    }
+    if (normalized < -Math.PI / 4 && normalized > -Math.PI * 3 / 4) {
+      return 'up';
+    }
+    return 'side';
+  }
+
+  private shieldOffsetFor(direction: VisualDirection, facingLeft: boolean) {
+    if (direction === 'up') {
+      return new Phaser.Math.Vector2(13, -6);
+    }
+    if (direction === 'down') {
+      return new Phaser.Math.Vector2(-17, 8);
+    }
+    return new Phaser.Math.Vector2(facingLeft ? -20 : 20, 5);
   }
 
   private updateUi() {
@@ -686,6 +767,31 @@ export class GameScene extends Phaser.Scene {
         }
       }
     }
+  }
+
+  private setupCharacterCollisions() {
+    if (!this.player) {
+      return;
+    }
+
+    for (const skeleton of this.skeletons) {
+      this.characterColliders.push(this.physics.add.collider(this.player.sprite, skeleton.sprite));
+    }
+
+    for (let outer = 0; outer < this.skeletons.length; outer += 1) {
+      for (let inner = outer + 1; inner < this.skeletons.length; inner += 1) {
+        this.characterColliders.push(
+          this.physics.add.collider(this.skeletons[outer].sprite, this.skeletons[inner].sprite)
+        );
+      }
+    }
+  }
+
+  private clearCharacterColliders() {
+    for (const collider of this.characterColliders) {
+      collider.destroy();
+    }
+    this.characterColliders = [];
   }
 
   private playerStart() {
