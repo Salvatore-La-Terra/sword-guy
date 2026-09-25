@@ -10,6 +10,8 @@
  * underlying AudioContext is created/resumed lazily: the first call to
  * `playSound` (or the automatic `pointerdown`/`keydown`/`touchstart`
  * listeners installed below) attempts to create and resume the context.
+ * The generated soundtrack is stricter: it waits until one of those listeners
+ * observes a trusted user gesture before scheduling any music.
  * Any failure (unsupported API, blocked autoplay, etc.) is swallowed so
  * gameplay is never interrupted by audio errors.
  */
@@ -52,6 +54,11 @@ class GeneratedSoundManager {
   private muted = false;
   private unavailable = false;
   private unlockListenersAttached = false;
+  private userGestureReceived = false;
+  private musicRequested = false;
+  private musicGain: GainNode | null = null;
+  private musicTimer: ReturnType<typeof setTimeout> | null = null;
+  private musicOscillators = new Set<OscillatorNode>();
 
   constructor() {
     this.attachUnlockListeners();
@@ -106,12 +113,53 @@ class GeneratedSoundManager {
     this.ensureContext();
   }
 
+  /**
+   * Request the generated soundtrack. If no trusted user gesture has occurred
+   * yet, playback is deferred until the first pointer, keyboard, or touch
+   * interaction. Repeated calls are idempotent.
+   */
+  startMusic(): void {
+    this.musicRequested = true;
+    if (this.userGestureReceived) {
+      this.beginMusic();
+    }
+  }
+
+  /** Stop the soundtrack and discard all currently scheduled music notes. */
+  stopMusic(): void {
+    this.musicRequested = false;
+    if (this.musicTimer !== null) {
+      clearTimeout(this.musicTimer);
+      this.musicTimer = null;
+    }
+    for (const oscillator of this.musicOscillators) {
+      try {
+        oscillator.stop();
+      } catch {
+        // An oscillator may already have ended between iteration and stop().
+      }
+      oscillator.disconnect();
+    }
+    this.musicOscillators.clear();
+    this.musicGain?.disconnect();
+    this.musicGain = null;
+  }
+
   private attachUnlockListeners(): void {
     if (this.unlockListenersAttached || typeof window === 'undefined') {
       return;
     }
     this.unlockListenersAttached = true;
-    const resume = () => this.ensureContext();
+    const resume = (event: Event) => {
+      if (!event.isTrusted) {
+        return;
+      }
+      this.userGestureReceived = true;
+      this.ensureContext();
+      if (this.musicRequested) {
+        this.beginMusic();
+      }
+    };
     try {
       window.addEventListener('pointerdown', resume, { passive: true });
       window.addEventListener('keydown', resume);
@@ -149,6 +197,85 @@ class GeneratedSoundManager {
       this.masterGain = null;
       return null;
     }
+  }
+
+  private beginMusic(): void {
+    if (!this.musicRequested || this.musicGain || this.unavailable) {
+      return;
+    }
+    const ctx = this.ensureContext();
+    if (!ctx || !this.masterGain) {
+      return;
+    }
+
+    try {
+      this.musicGain = ctx.createGain();
+      this.musicGain.gain.value = 0.14;
+      this.musicGain.connect(this.masterGain);
+      this.scheduleMusicPhrase(ctx);
+    } catch {
+      this.stopMusic();
+    }
+  }
+
+  private scheduleMusicPhrase(ctx: AudioContext): void {
+    if (!this.musicRequested || !this.musicGain) {
+      return;
+    }
+
+    const phraseStart = ctx.currentTime + 0.08;
+    const notes = [
+      { beat: 0, freq: 293.66, duration: 0.7 },
+      { beat: 2, freq: 349.23, duration: 0.55 },
+      { beat: 3, freq: 392, duration: 0.8 },
+      { beat: 5.5, freq: 349.23, duration: 0.55 },
+      { beat: 7, freq: 293.66, duration: 1 }
+    ];
+    const secondsPerBeat = 0.72;
+
+    for (const note of notes) {
+      this.musicTone(
+        ctx,
+        this.musicGain,
+        phraseStart + note.beat * secondsPerBeat,
+        note.freq,
+        note.duration
+      );
+    }
+
+    this.musicTimer = setTimeout(() => {
+      this.musicTimer = null;
+      this.scheduleMusicPhrase(ctx);
+    }, 7000);
+  }
+
+  /** Quiet, rounded plucked-string approximation used only by the soundtrack. */
+  private musicTone(
+    ctx: AudioContext,
+    dest: GainNode,
+    startAt: number,
+    frequency: number,
+    duration: number
+  ): void {
+    const oscillator = ctx.createOscillator();
+    const gain = ctx.createGain();
+    oscillator.type = 'triangle';
+    oscillator.frequency.setValueAtTime(frequency, startAt);
+
+    gain.gain.setValueAtTime(0.0001, startAt);
+    gain.gain.exponentialRampToValueAtTime(0.075, startAt + 0.025);
+    gain.gain.exponentialRampToValueAtTime(0.0001, startAt + duration);
+
+    oscillator.connect(gain);
+    gain.connect(dest);
+    oscillator.addEventListener('ended', () => {
+      this.musicOscillators.delete(oscillator);
+      oscillator.disconnect();
+      gain.disconnect();
+    });
+    this.musicOscillators.add(oscillator);
+    oscillator.start(startAt);
+    oscillator.stop(startAt + duration + 0.02);
   }
 
   private render(cue: SoundCue, ctx: AudioContext, dest: GainNode): void {
@@ -290,4 +417,18 @@ export function isSoundMuted(): boolean {
  */
 export function unlockSound(): void {
   soundManager.unlock();
+}
+
+/**
+ * Request the quiet, sparse generated medieval-style soundtrack. Playback
+ * begins only after a trusted user gesture and repeated calls do not create
+ * additional loops.
+ */
+export function startMedievalMusic(): void {
+  soundManager.startMusic();
+}
+
+/** Stop the generated soundtrack and cancel all scheduled music notes. */
+export function stopMedievalMusic(): void {
+  soundManager.stopMusic();
 }
