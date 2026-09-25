@@ -1,6 +1,9 @@
 export const GAME_WIDTH = 1200;
 export const GAME_HEIGHT = 800;
 
+/** Number of waves to clear before the player wins the whole game. */
+export const TOTAL_WAVES = 4;
+
 export const ARENA = {
   left: 54,
   right: 1146,
