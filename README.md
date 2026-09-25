@@ -13,6 +13,11 @@ npm run dev
 
 Open the local URL printed by Vite to play the game.
 
+The game opens on a medieval briefing screen describing the story, objective,
+controls, healing, scoring, and waves. Select **START GAME** or press
+**Enter/Space** to begin. The generated medieval soundtrack starts only after
+this choice, in accordance with browser audio rules.
+
 ## Controls
 
 - **WASD**: move the knight, including diagonally
