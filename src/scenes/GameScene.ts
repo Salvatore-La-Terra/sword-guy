@@ -13,7 +13,7 @@ import { createScoreFeedback, type ScoreFeedback } from '../game/scoreFeedback';
 import { playSound, toggleSoundMuted, unlockSound } from '../game/sound';
 import type { Fighter, Player, Skeleton } from '../game/types';
 
-type Keys = Record<'w' | 'a' | 's' | 'd' | 'esc' | 'space' | 'm', Phaser.Input.Keyboard.Key>;
+type Keys = Record<'w' | 'a' | 's' | 'd' | 'esc' | 'space' | 'enter' | 'm', Phaser.Input.Keyboard.Key>;
 type VisualDirection = 'down' | 'up' | 'side';
 
 const HEAL_AMOUNT = 1;
@@ -65,6 +65,7 @@ export class GameScene extends Phaser.Scene {
       d: Phaser.Input.Keyboard.KeyCodes.D,
       esc: Phaser.Input.Keyboard.KeyCodes.ESC,
       space: Phaser.Input.Keyboard.KeyCodes.SPACE,
+      enter: Phaser.Input.Keyboard.KeyCodes.ENTER,
       m: Phaser.Input.Keyboard.KeyCodes.M
     }) as Keys;
     this.startGame();
@@ -98,7 +99,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (this.defeat) {
-      if (leftMouseDown && !this.leftMouseWasDown) {
+      if (Phaser.Input.Keyboard.JustDown(this.keys.enter)) {
         this.startGame();
       }
       this.leftMouseWasDown = leftMouseDown;
@@ -778,7 +779,7 @@ export class GameScene extends Phaser.Scene {
     this.player.state = 'dead';
     this.player.sprite.setVelocity(0);
     this.player.sprite.setTint(0x7f1d1d);
-    this.promptText?.setText('You died.\nLeft-click to restart.');
+    this.promptText?.setText('You died.\nPress ENTER to restart.');
     this.transitions?.playDefeat();
     playSound('defeat');
   }
