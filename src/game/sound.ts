@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Lightweight, dependency-free Web Audio sound cues for the game.
  *
  * This module is intentionally isolated from Phaser/GameScene: it only
@@ -123,6 +123,20 @@ class GeneratedSoundManager {
     if (this.userGestureReceived) {
       this.beginMusic();
     }
+  }
+
+  /**
+   * Whether the generated soundtrack is currently scheduled/audible (i.e. a
+   * trusted user gesture has already unlocked it). Useful for UI that needs
+   * to reflect autoplay-blocked vs. actively-playing state.
+   */
+  isMusicPlaying(): boolean {
+    return this.musicRequested && this.musicGain !== null;
+  }
+
+  /** Whether a trusted user gesture has occurred yet (autoplay unlock state). */
+  hasUserGesture(): boolean {
+    return this.userGestureReceived;
   }
 
   /** Stop the soundtrack and discard all currently scheduled music notes. */
@@ -431,4 +445,18 @@ export function startMedievalMusic(): void {
 /** Stop the generated soundtrack and cancel all scheduled music notes. */
 export function stopMedievalMusic(): void {
   soundManager.stopMusic();
+}
+
+/**
+ * Whether the soundtrack has actually started producing sound (i.e. a
+ * trusted gesture already unlocked it). False while autoplay is still
+ * blocked, even if `startMedievalMusic()` has been requested.
+ */
+export function isMedievalMusicPlaying(): boolean {
+  return soundManager.isMusicPlaying();
+}
+
+/** Whether any trusted user gesture (click/key/touch) has been observed yet. */
+export function hasReceivedUserGesture(): boolean {
+  return soundManager.hasUserGesture();
 }

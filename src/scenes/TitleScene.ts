@@ -1,6 +1,13 @@
-﻿import Phaser from 'phaser';
+import Phaser from 'phaser';
 import { GAME_HEIGHT, GAME_WIDTH } from '../game/constants';
-import { startMedievalMusic, unlockSound } from '../game/sound';
+import {
+  hasReceivedUserGesture,
+  isMedievalMusicPlaying,
+  isSoundMuted,
+  startMedievalMusic,
+  toggleSoundMuted,
+  unlockSound
+} from '../game/sound';
 
 /**
  * Standalone medieval title screen for Sword Guy.
@@ -15,6 +22,10 @@ export class TitleScene extends Phaser.Scene {
   private startButton?: Phaser.GameObjects.Rectangle;
   private startLabel?: Phaser.GameObjects.Text;
   private hintText?: Phaser.GameObjects.Text;
+  private musicButton?: Phaser.GameObjects.Rectangle;
+  private musicLabel?: Phaser.GameObjects.Text;
+  private musicStatusText?: Phaser.GameObjects.Text;
+  private lastMusicStatus = '';
 
   constructor() {
     super('TitleScene');
@@ -28,12 +39,26 @@ export class TitleScene extends Phaser.Scene {
     this.buildAmbientMotes();
     this.buildTitle();
     this.buildBriefing();
+    this.buildKnightArt();
     this.buildStartControls();
+    this.buildMusicControls();
+
+    // Request the generated soundtrack as soon as the title scene opens so
+    // that the very first trusted user gesture anywhere on the page (a
+    // click, key press, or tap - including on the music button below)
+    // activates it immediately, without requiring the player to start the
+    // game first.
+    startMedievalMusic();
+    this.refreshMusicStatus(true);
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.input.keyboard?.off('keydown-ENTER', this.handleConfirmKey, this);
       this.input.keyboard?.off('keydown-SPACE', this.handleConfirmKey, this);
     });
+  }
+
+  update() {
+    this.refreshMusicStatus(false);
   }
 
   private buildBackdrop() {
@@ -288,6 +313,201 @@ export class TitleScene extends Phaser.Scene {
     body.setOrigin(0, 0);
   }
 
+  /**
+   * Draws a stylised armoured knight entirely out of Phaser primitives
+   * (graphics paths + basic shapes) so the title screen has a strong,
+   * readable hero silhouette without any external image assets. It is
+   * placed in the right-hand margin, clear of the briefing panel and the
+   * start / music controls, with a few restrained looping tweens (chest
+   * "breathing", a swaying cloak, and a metal glint) to keep it alive
+   * without distracting from the readable UI.
+   */
+  private buildKnightArt() {
+    const centerX = GAME_WIDTH - 105;
+    const centerY = 460;
+
+    this.add.ellipse(centerX, 606, 132, 24, 0x000000, 0.35);
+
+    const knight = this.add.container(centerX, centerY);
+
+    // Cloak, drawn first so the body renders on top of it.
+    const cloak = this.add.graphics();
+    cloak.fillStyle(0x7f1d1d, 0.92);
+    cloak.beginPath();
+    cloak.moveTo(-32, -80);
+    cloak.lineTo(32, -80);
+    cloak.lineTo(58, 108);
+    cloak.lineTo(20, 94);
+    cloak.lineTo(0, 116);
+    cloak.lineTo(-20, 94);
+    cloak.lineTo(-58, 108);
+    cloak.closePath();
+    cloak.fillPath();
+    cloak.lineStyle(3, 0x450a0a, 0.9);
+    cloak.strokePath();
+    knight.add(cloak);
+
+    // Legs, boots and belt (static lower body).
+    const lowerBody = this.add.graphics();
+    lowerBody.fillStyle(0x334155, 1);
+    lowerBody.fillRoundedRect(-26, 60, 20, 68, 4);
+    lowerBody.fillRoundedRect(6, 60, 20, 68, 4);
+    lowerBody.fillStyle(0x1e293b, 1);
+    lowerBody.fillRoundedRect(-30, 120, 28, 16, 4);
+    lowerBody.fillRoundedRect(2, 120, 28, 16, 4);
+    lowerBody.fillStyle(0x92400e, 1);
+    lowerBody.fillRect(-34, 52, 68, 12);
+    lowerBody.fillStyle(0xfbbf24, 1);
+    lowerBody.fillCircle(0, 58, 5);
+    knight.add(lowerBody);
+
+    // Upper body (chest plate, pauldrons, helmet, plume) grouped so it can
+    // "breathe" as one piece without disturbing the legs or cloak.
+    const upperBody = this.add.container(0, 40);
+
+    const chest = this.add.graphics();
+    chest.fillStyle(0x64748b, 1);
+    chest.beginPath();
+    chest.moveTo(-30, 10);
+    chest.lineTo(30, 10);
+    chest.lineTo(24, -55);
+    chest.lineTo(-24, -55);
+    chest.closePath();
+    chest.fillPath();
+    chest.lineStyle(2, 0x334155, 1);
+    chest.strokePath();
+    chest.fillStyle(0xfbbf24, 0.9);
+    chest.fillRect(-3, -40, 6, 24);
+    chest.fillRect(-10, -32, 20, 6);
+    upperBody.add(chest);
+
+    const pauldronLeft = this.add.ellipse(-30, -48, 26, 22, 0x94a3b8, 1);
+    pauldronLeft.setStrokeStyle(2, 0x475569, 1);
+    const pauldronRight = this.add.ellipse(30, -48, 26, 22, 0x94a3b8, 1);
+    pauldronRight.setStrokeStyle(2, 0x475569, 1);
+    upperBody.add([pauldronLeft, pauldronRight]);
+
+    const gorget = this.add.rectangle(0, -58, 16, 12, 0x475569, 1);
+    upperBody.add(gorget);
+
+    const helmet = this.add.graphics();
+    helmet.fillStyle(0x94a3b8, 1);
+    helmet.fillEllipse(0, -84, 46, 50);
+    helmet.lineStyle(2, 0x334155, 1);
+    helmet.strokeEllipse(0, -84, 46, 50);
+    helmet.fillStyle(0x64748b, 1);
+    helmet.fillRect(-23, -86, 46, 14);
+    helmet.fillStyle(0x1e293b, 1);
+    helmet.fillRect(-14, -82, 28, 8);
+    upperBody.add(helmet);
+
+    const plume = this.add.graphics();
+    plume.fillStyle(0xb45309, 0.95);
+    plume.beginPath();
+    plume.moveTo(0, -108);
+    plume.lineTo(-8, -140);
+    plume.lineTo(0, -130);
+    plume.lineTo(8, -140);
+    plume.closePath();
+    plume.fillPath();
+    plume.fillStyle(0xfbbf24, 0.9);
+    plume.fillTriangle(0, -108, -4, -126, 4, -126);
+    upperBody.add(plume);
+
+    knight.add(upperBody);
+
+    // Shield, held out to the knight's viewer-left side.
+    const shield = this.add.container(-52, 10);
+    const shieldBody = this.add.graphics();
+    shieldBody.fillStyle(0x475569, 1);
+    shieldBody.fillRoundedRect(-20, -34, 40, 60, { tl: 8, tr: 8, bl: 8, br: 20 });
+    shieldBody.lineStyle(3, 0xfbbf24, 0.9);
+    shieldBody.strokeRoundedRect(-20, -34, 40, 60, { tl: 8, tr: 8, bl: 8, br: 20 });
+    shieldBody.fillStyle(0x991b1b, 0.95);
+    shieldBody.fillRect(-4, -28, 8, 48);
+    shieldBody.fillRect(-16, -6, 32, 8);
+    shield.add(shieldBody);
+    const shieldGlint = this.add.rectangle(-6, -20, 8, 50, 0xffffff, 0.1);
+    shieldGlint.setAngle(18);
+    shield.add(shieldGlint);
+    knight.add(shield);
+
+    // Sword, raised on the viewer-right side.
+    const sword = this.add.container(48, -10);
+    sword.setAngle(-14);
+    const blade = this.add.rectangle(0, -70, 10, 130, 0xcbd5e1, 1);
+    blade.setStrokeStyle(1, 0x64748b, 1);
+    const bladeTip = this.add.triangle(0, -140, -5, 6, 5, 6, 0, -6, 0xcbd5e1, 1);
+    const crossguard = this.add.rectangle(0, 0, 34, 8, 0xb45309, 1);
+    const grip = this.add.rectangle(0, 16, 8, 28, 0x78350f, 1);
+    const pommel = this.add.circle(0, 32, 6, 0xfbbf24, 1);
+    sword.add([blade, bladeTip, crossguard, grip, pommel]);
+    const swordGlint = this.add.rectangle(0, -70, 4, 110, 0xffffff, 0.1);
+    sword.add(swordGlint);
+    knight.add(sword);
+
+    // Restrained ambient animation: breathing, cloak sway and a metal glint.
+    this.tweens.add({
+      targets: upperBody,
+      scaleY: { from: 1, to: 1.035 },
+      y: { from: 40, to: 37 },
+      duration: 2600,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut'
+    });
+    this.tweens.add({
+      targets: cloak,
+      angle: { from: -3, to: 3 },
+      duration: 3400,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut'
+    });
+    this.tweens.add({
+      targets: [shieldGlint, swordGlint],
+      alpha: { from: 0.06, to: 0.5 },
+      duration: 1900,
+      yoyo: true,
+      repeat: -1,
+      delay: 500,
+      ease: 'Sine.easeInOut'
+    });
+  }
+
+  private buildMusicControls() {
+    const panelX = 150;
+    const panelY = 60;
+
+    const button = this.add.rectangle(panelX, panelY, 220, 52, 0x1e293b, 1);
+    button.setStrokeStyle(2, 0xfbbf24, 0.9);
+    button.setInteractive({ useHandCursor: true });
+    this.musicButton = button;
+
+    const label = this.add.text(panelX, panelY, '\ud83c\udfb5 ENABLE MUSIC', {
+      fontFamily: 'Georgia, "Times New Roman", serif',
+      fontSize: '17px',
+      color: '#fde68a'
+    });
+    label.setOrigin(0.5, 0.5);
+    this.musicLabel = label;
+
+    const status = this.add.text(panelX, panelY + 34, 'Music: waiting for a click or key press...', {
+      fontFamily: 'Consolas, "Courier New", monospace',
+      fontSize: '13px',
+      color: '#94a3b8'
+    });
+    status.setOrigin(0.5, 0.5);
+    status.setWordWrapWidth(240, true);
+    this.musicStatusText = status;
+
+    button.on('pointerover', () => button.setFillStyle(0x334155, 1));
+    button.on('pointerout', () => button.setFillStyle(0x1e293b, 1));
+    // Separate, explicit gesture that only affects audio - it never starts
+    // gameplay. Clicking it both counts as the trusted user gesture browsers
+    // require before audio can play, and lets the player mute/unmute freely.
+    button.on('pointerup', () => this.toggleMusic());
+  }
   private buildStartControls() {
     const buttonY = GAME_HEIGHT - 158;
 
@@ -372,6 +592,68 @@ export class TitleScene extends Phaser.Scene {
     this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
       this.scene.start('GameScene');
     });
+  }
+
+  /**
+   * Explicit music enable/mute control, independent of the game-start gate.
+   * The pointerup event itself is a trusted gesture, so this both satisfies
+   * the browser's autoplay requirement and lets the player mute at will.
+   */
+  private toggleMusic() {
+    unlockSound();
+    toggleSoundMuted();
+    this.refreshMusicStatus(true);
+  }
+
+  /** Keeps the music button/status text in sync with the real audio state. */
+  private refreshMusicStatus(force: boolean) {
+    if (!this.musicStatusText || !this.musicLabel || !this.musicButton) {
+      return;
+    }
+
+    const muted = isSoundMuted();
+    const playing = isMedievalMusicPlaying();
+    const unlocked = hasReceivedUserGesture();
+
+    let status: string;
+    if (muted) {
+      status = 'muted';
+    } else if (playing) {
+      status = 'playing';
+    } else if (unlocked) {
+      status = 'starting';
+    } else {
+      status = 'waiting';
+    }
+
+    if (!force && status === this.lastMusicStatus) {
+      return;
+    }
+    this.lastMusicStatus = status;
+
+    switch (status) {
+      case 'muted':
+        this.musicButton.setFillStyle(0x3f1d1d, 1);
+        this.musicLabel.setText('\ud83c\udfb5 UNMUTE MUSIC');
+        this.musicStatusText.setText('Music: muted - click to unmute.');
+        break;
+      case 'playing':
+        this.musicButton.setFillStyle(0x14532d, 1);
+        this.musicLabel.setText('\ud83c\udfb5 MUTE MUSIC');
+        this.musicStatusText.setText('Music: playing.');
+        break;
+      case 'starting':
+        this.musicButton.setFillStyle(0x1e293b, 1);
+        this.musicLabel.setText('\ud83c\udfb5 MUTE MUSIC');
+        this.musicStatusText.setText('Music: starting...');
+        break;
+      case 'waiting':
+      default:
+        this.musicButton.setFillStyle(0x1e293b, 1);
+        this.musicLabel.setText('\ud83c\udfb5 ENABLE MUSIC');
+        this.musicStatusText.setText('Music: click here (or anywhere) to enable.');
+        break;
+    }
   }
 }
 
