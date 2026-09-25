@@ -48,6 +48,11 @@ const AUDIO_CONTEXT_CTOR: (new () => AudioContext) | undefined =
     ? window.AudioContext ?? (window as unknown as { webkitAudioContext?: new () => AudioContext }).webkitAudioContext
     : undefined;
 
+/** Location of the recorded soundtrack, served from the `public/` folder. */
+const MUSIC_TRACK_URL = `${import.meta.env.BASE_URL}audio/cathedral-of-ash.mp3`;
+/** Linear gain applied to the recorded soundtrack (kept under sound effects). */
+const MUSIC_TRACK_GAIN = 0.35;
+
 class GeneratedSoundManager {
   private ctx: AudioContext | null = null;
   private masterGain: GainNode | null = null;
@@ -59,6 +64,9 @@ class GeneratedSoundManager {
   private musicGain: GainNode | null = null;
   private musicTimer: ReturnType<typeof setTimeout> | null = null;
   private musicOscillators = new Set<OscillatorNode>();
+  private musicSource: AudioBufferSourceNode | null = null;
+  private musicBuffer: AudioBuffer | null = null;
+  private musicBufferPromise: Promise<AudioBuffer | null> | null = null;
 
   constructor() {
     this.attachUnlockListeners();
@@ -155,6 +163,15 @@ class GeneratedSoundManager {
       oscillator.disconnect();
     }
     this.musicOscillators.clear();
+    if (this.musicSource) {
+      try {
+        this.musicSource.stop();
+      } catch {
+        // The buffer source may already have ended.
+      }
+      this.musicSource.disconnect();
+      this.musicSource = null;
+    }
     this.musicGain?.disconnect();
     this.musicGain = null;
   }
@@ -224,12 +241,64 @@ class GeneratedSoundManager {
 
     try {
       this.musicGain = ctx.createGain();
-      this.musicGain.gain.value = 0.14;
+      this.musicGain.gain.value = MUSIC_TRACK_GAIN;
       this.musicGain.connect(this.masterGain);
-      this.scheduleMusicPhrase(ctx);
     } catch {
       this.stopMusic();
+      return;
     }
+
+    void this.loadMusicBuffer(ctx).then(buffer => {
+      // The request may have been cancelled (stopMusic()) while the file
+      // was loading/decoding; bail out rather than starting stale audio.
+      if (!this.musicRequested || !this.musicGain) {
+        return;
+      }
+      if (buffer) {
+        this.playMusicBuffer(ctx, buffer);
+      } else {
+        // Fall back to the generated melody if the recorded track can't be
+        // fetched or decoded (e.g. offline, unsupported format).
+        this.musicGain.gain.value = 0.14;
+        this.scheduleMusicPhrase(ctx);
+      }
+    });
+  }
+
+  /** Fetches and decodes the recorded soundtrack once, caching the result. */
+  private loadMusicBuffer(ctx: AudioContext): Promise<AudioBuffer | null> {
+    if (this.musicBuffer) {
+      return Promise.resolve(this.musicBuffer);
+    }
+    if (!this.musicBufferPromise) {
+      this.musicBufferPromise = fetch(MUSIC_TRACK_URL)
+        .then(response => {
+          if (!response.ok) {
+            throw new Error(`Failed to fetch soundtrack: ${response.status}`);
+          }
+          return response.arrayBuffer();
+        })
+        .then(data => ctx.decodeAudioData(data))
+        .then(buffer => {
+          this.musicBuffer = buffer;
+          return buffer;
+        })
+        .catch(() => null);
+    }
+    return this.musicBufferPromise;
+  }
+
+  /** Starts a looping buffer source playing the recorded soundtrack. */
+  private playMusicBuffer(ctx: AudioContext, buffer: AudioBuffer): void {
+    if (!this.musicGain) {
+      return;
+    }
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.loop = true;
+    source.connect(this.musicGain);
+    source.start();
+    this.musicSource = source;
   }
 
   private scheduleMusicPhrase(ctx: AudioContext): void {

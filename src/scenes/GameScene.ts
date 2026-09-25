@@ -11,14 +11,14 @@ import {
   spawnHealEffect,
   spawnHitEffect
 } from '../game/combatEffects';
-import { ARENA, COMBAT, FURNITURE, GAME_HEIGHT, GAME_WIDTH, PLAYER, SKELETON } from '../game/constants';
+import { ARENA, COMBAT, FURNITURE, GAME_HEIGHT, GAME_WIDTH, PLAYER, SKELETON, TOTAL_WAVES } from '../game/constants';
 import { angleBetween, angleDifference, directionFromAngle } from '../game/math';
 import { SceneTransitions } from '../game/sceneTransitions';
 import { createScoreFeedback, type ScoreFeedback } from '../game/scoreFeedback';
 import { playSound, toggleSoundMuted, unlockSound } from '../game/sound';
 import type { Fighter, Player, Skeleton } from '../game/types';
 
-type Keys = Record<'w' | 'a' | 's' | 'd' | 'esc' | 'space' | 'm', Phaser.Input.Keyboard.Key>;
+type Keys = Record<'w' | 'a' | 's' | 'd' | 'esc' | 'space' | 'enter' | 'm', Phaser.Input.Keyboard.Key>;
 type VisualDirection = 'down' | 'up' | 'side';
 
 const HEAL_AMOUNT = 1;
@@ -43,6 +43,7 @@ export class GameScene extends Phaser.Scene {
   private playerObstacleCollider?: Phaser.Physics.Arcade.Collider;
   private awaitingNextWave = false;
   private defeat = false;
+  private victory = false;
   private paused = false;
   private pausedAt = 0;
   private healCooldownUntil = 0;
@@ -86,6 +87,7 @@ export class GameScene extends Phaser.Scene {
       d: Phaser.Input.Keyboard.KeyCodes.D,
       esc: Phaser.Input.Keyboard.KeyCodes.ESC,
       space: Phaser.Input.Keyboard.KeyCodes.SPACE,
+      enter: Phaser.Input.Keyboard.KeyCodes.ENTER,
       m: Phaser.Input.Keyboard.KeyCodes.M
     }) as Keys;
     this.startGame();
@@ -119,7 +121,15 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (this.defeat) {
-      if (leftMouseDown && !this.leftMouseWasDown) {
+      if (Phaser.Input.Keyboard.JustDown(this.keys.enter)) {
+        this.startGame();
+      }
+      this.leftMouseWasDown = leftMouseDown;
+      return;
+    }
+
+    if (this.victory) {
+      if (Phaser.Input.Keyboard.JustDown(this.keys.enter)) {
         this.startGame();
       }
       this.leftMouseWasDown = leftMouseDown;
@@ -272,6 +282,7 @@ export class GameScene extends Phaser.Scene {
   private startGame() {
     this.wave = 1;
     this.defeat = false;
+    this.victory = false;
     this.awaitingNextWave = false;
     this.healCooldownUntil = 0;
     this.scoreFeedback?.reset();
@@ -587,7 +598,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private resolveActiveAttacks(time: number) {
-    if (!this.player || this.awaitingNextWave || this.defeat) {
+    if (!this.player || this.awaitingNextWave || this.defeat || this.victory) {
       return;
     }
 
@@ -784,12 +795,28 @@ export class GameScene extends Phaser.Scene {
 
   private winWave() {
     this.blackHole?.reset();
+    if (this.wave >= TOTAL_WAVES) {
+      this.winGame();
+      return;
+    }
     this.awaitingNextWave = true;
     this.scoreFeedback?.add(this.wave * 250, {
       x: GAME_WIDTH / 2,
       y: GAME_HEIGHT / 2 - 70
     });
     this.promptText?.setText(`Wave ${this.wave} cleared!\nLeft-click for the next level.`);
+    this.transitions?.playWaveClear(this.wave);
+    playSound('waveClear');
+  }
+
+  private winGame() {
+    this.blackHole?.reset();
+    this.victory = true;
+    this.scoreFeedback?.add(this.wave * 500, {
+      x: GAME_WIDTH / 2,
+      y: GAME_HEIGHT / 2 - 70
+    });
+    this.promptText?.setText(`You win! All ${TOTAL_WAVES} waves cleared.\nPress ENTER to play again.`);
     this.transitions?.playWaveClear(this.wave);
     playSound('waveClear');
   }
@@ -803,7 +830,7 @@ export class GameScene extends Phaser.Scene {
     this.player.state = 'dead';
     this.player.sprite.setVelocity(0);
     this.player.sprite.setTint(0x7f1d1d);
-    this.promptText?.setText('You died.\nLeft-click to restart.');
+    this.promptText?.setText('You died.\nPress ENTER to restart.');
     this.transitions?.playDefeat();
     playSound('defeat');
   }
@@ -953,7 +980,7 @@ export class GameScene extends Phaser.Scene {
       this.hearts[index].setAlpha(index < this.player.hp ? 1 : 0.25);
     }
 
-    if (!this.awaitingNextWave && !this.defeat && !this.paused) {
+    if (!this.awaitingNextWave && !this.defeat && !this.victory && !this.paused) {
       this.promptText?.setText('');
     }
   }
