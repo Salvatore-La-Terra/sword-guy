@@ -1,6 +1,11 @@
 import Phaser from 'phaser';
 import { createGeneratedAssets } from '../game/assets';
 import {
+  createBlackHoleHazard,
+  type BlackHoleFighterInput,
+  type BlackHoleHazard
+} from '../game/blackHoleHazard';
+import {
   spawnBlockEffect,
   spawnDeathEffect,
   spawnHealEffect,
@@ -30,6 +35,7 @@ export class GameScene extends Phaser.Scene {
   private promptText?: Phaser.GameObjects.Text;
   private scoreFeedback?: ScoreFeedback;
   private transitions?: SceneTransitions;
+  private blackHole?: BlackHoleHazard;
   private hearts: Phaser.GameObjects.Image[] = [];
   private characterColliders: Phaser.Physics.Arcade.Collider[] = [];
   private obstacleGroup?: Phaser.Physics.Arcade.StaticGroup;
@@ -58,6 +64,21 @@ export class GameScene extends Phaser.Scene {
     this.createArena();
     this.createUi();
     this.transitions = new SceneTransitions(this);
+    this.blackHole = createBlackHoleHazard(this, ARENA, {
+      warningDurationMs: 1200,
+      activeDurationMs: 4500,
+      cooldownDurationMs: 600,
+      cycleIntervalMs: 10000,
+      initialDelayMs: 9000,
+      pullRadius: 170,
+      pullForce: 72,
+      consumeRadius: 26,
+      edgeMargin: 60,
+      depth: 8,
+      getExclusionZones: () => this.blackHoleExclusionZones(),
+      onWarningStart: () => this.promptText?.setText('A void is forming - keep your distance!'),
+      onActiveStart: () => this.cameras.main.shake(180, 0.0025)
+    });
     this.keys = this.input.keyboard?.addKeys({
       w: Phaser.Input.Keyboard.KeyCodes.W,
       a: Phaser.Input.Keyboard.KeyCodes.A,
@@ -142,6 +163,7 @@ export class GameScene extends Phaser.Scene {
     for (const skeleton of this.skeletons) {
       this.updateSkeleton(skeleton, time);
     }
+    this.updateBlackHole(time, this.game.loop.delta);
 
     this.resolveActiveAttacks(time);
     this.updateVisuals(time);
@@ -293,6 +315,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private startWave() {
+    this.blackHole?.reset();
     this.clearCharacterColliders();
     for (const skeleton of this.skeletons) {
       this.destroySkeleton(skeleton);
@@ -760,6 +783,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private winWave() {
+    this.blackHole?.reset();
     this.awaitingNextWave = true;
     this.scoreFeedback?.add(this.wave * 250, {
       x: GAME_WIDTH / 2,
@@ -775,6 +799,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     this.defeat = true;
+    this.blackHole?.reset();
     this.player.state = 'dead';
     this.player.sprite.setVelocity(0);
     this.player.sprite.setTint(0x7f1d1d);
@@ -943,6 +968,7 @@ export class GameScene extends Phaser.Scene {
       this.pausedAt = time;
       this.physics.pause();
       this.tweens.pauseAll();
+      this.blackHole?.pause();
       this.promptText?.setText('Paused\nPress ESC to resume.');
       return;
     }
@@ -950,6 +976,7 @@ export class GameScene extends Phaser.Scene {
     const pausedFor = this.pausedAt > 0 ? time - this.pausedAt : 0;
     this.physics.resume();
     this.tweens.resumeAll();
+    this.blackHole?.resume();
     this.shiftTimers(pausedFor);
     this.healCooldownUntil += pausedFor;
     this.promptText?.setText('');
@@ -1005,6 +1032,158 @@ export class GameScene extends Phaser.Scene {
       collider.destroy();
     }
     this.characterColliders = [];
+  }
+
+  private updateBlackHole(time: number, delta: number) {
+    if (!this.player || this.wave < 2 || this.awaitingNextWave || this.defeat) {
+      return;
+    }
+
+    const fighters: BlackHoleFighterInput[] = [];
+    if (this.player.state !== 'stagger' && this.player.state !== 'dead') {
+      fighters.push({
+        id: this.player.id,
+        x: this.player.sprite.x,
+        y: this.player.sprite.y,
+        vx: this.player.sprite.body.velocity.x,
+        vy: this.player.sprite.body.velocity.y
+      });
+    }
+    for (const skeleton of this.skeletons) {
+      if (skeleton.state === 'stagger' || skeleton.state === 'dead') {
+        continue;
+      }
+      fighters.push({
+        id: skeleton.id,
+        x: skeleton.sprite.x,
+        y: skeleton.sprite.y,
+        vx: skeleton.sprite.body.velocity.x,
+        vy: skeleton.sprite.body.velocity.y
+      });
+    }
+
+    const consumedIds = this.blackHole?.update(time, delta, fighters) ?? [];
+    for (const input of fighters) {
+      const fighter = input.id === this.player.id
+        ? this.player
+        : this.skeletons.find(skeleton => skeleton.id === input.id);
+      if (!fighter || consumedIds.includes(input.id)) {
+        continue;
+      }
+      fighter.sprite.setVelocity(input.vx ?? 0, input.vy ?? 0);
+    }
+
+    for (const id of consumedIds) {
+      if (id === this.player.id) {
+        this.consumePlayer();
+        return;
+      }
+      const skeleton = this.skeletons.find(candidate => candidate.id === id);
+      if (skeleton) {
+        this.consumeSkeleton(skeleton);
+      }
+    }
+  }
+
+  private consumeSkeleton(skeleton: Skeleton) {
+    const position = this.positionOf(skeleton);
+    const destination = this.blackHole?.getPosition() ?? position;
+    skeleton.state = 'dead';
+    skeleton.sprite.body.enable = false;
+    skeleton.sword.setVisible(false);
+    skeleton.shield.setVisible(false);
+    for (const pip of skeleton.healthPips) {
+      pip.setVisible(false);
+    }
+    spawnDeathEffect(this, position);
+    this.showFloatingMessage('CONSUMED', position, '#c4b5fd');
+    this.skeletons = this.skeletons.filter(candidate => candidate !== skeleton);
+    this.clearCharacterColliders();
+    const clearedWave = this.skeletons.length === 0;
+    if (!clearedWave) {
+      this.setupCharacterCollisions();
+    }
+    this.tweens.add({
+      targets: skeleton.sprite,
+      x: destination.x,
+      y: destination.y,
+      scale: 0,
+      alpha: 0,
+      rotation: skeleton.sprite.rotation + Math.PI * 2,
+      duration: 320,
+      ease: 'Cubic.easeIn',
+      onComplete: () => {
+        this.destroySkeleton(skeleton);
+        if (clearedWave) {
+          this.winWave();
+        }
+      }
+    });
+  }
+
+  private consumePlayer() {
+    if (!this.player || this.player.state === 'dead') {
+      return;
+    }
+    const destination = this.blackHole?.getPosition() ?? this.positionOf(this.player);
+    this.player.hp = 0;
+    this.player.state = 'dead';
+    this.player.sprite.body.enable = false;
+    this.player.sword.setVisible(false);
+    this.player.shield.setVisible(false);
+    this.updateUi();
+    this.tweens.add({
+      targets: this.player.sprite,
+      x: destination.x,
+      y: destination.y,
+      scale: 0,
+      alpha: 0,
+      rotation: this.player.sprite.rotation + Math.PI * 2,
+      duration: 360,
+      ease: 'Cubic.easeIn',
+      onComplete: () => this.loseGame()
+    });
+  }
+
+  private showFloatingMessage(message: string, position: Phaser.Math.Vector2, color: string) {
+    const label = this.add.text(position.x, position.y - 20, message, {
+      color,
+      fontFamily: 'monospace',
+      fontSize: '15px',
+      stroke: '#020617',
+      strokeThickness: 3
+    }).setOrigin(0.5).setDepth(20);
+    this.tweens.add({
+      targets: label,
+      y: label.y - 28,
+      alpha: 0,
+      duration: 620,
+      ease: 'Cubic.easeOut',
+      onComplete: () => label.destroy()
+    });
+  }
+
+  private blackHoleExclusionZones() {
+    const zones = this.obstacles.map(obstacle => ({
+      x: obstacle.center.x,
+      y: obstacle.center.y,
+      radius: obstacle.radius + 70
+    }));
+    if (this.player) {
+      zones.push({
+        x: this.player.sprite.x,
+        y: this.player.sprite.y,
+        radius: 260
+      });
+    }
+    for (const skeleton of this.skeletons) {
+      zones.push({
+        x: skeleton.sprite.x,
+        y: skeleton.sprite.y,
+        radius: 90
+      });
+    }
+    return zones;
   }
 
   private playerStart() {

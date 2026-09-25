@@ -32,7 +32,9 @@ when nearby, and can attack or guard. Unblocked sword hits stagger opponents;
 the player and skeletons lose health until they are defeated. Clear a wave and
 left-click to start a harder one. Defeating enemies and clearing waves awards
 score, with restrained particles, transitions, and generated sound cues
-providing gameplay feedback.
+providing gameplay feedback. From wave two onward, unstable black holes
+occasionally form with a visible warning, pull nearby fighters inward, and
+consume anyone who reaches their center.
 
 ## Production build
 
