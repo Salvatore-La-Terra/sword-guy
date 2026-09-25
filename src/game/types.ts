@@ -24,4 +24,5 @@ export interface Skeleton extends Fighter {
   nextDecisionAt: number;
   attackCooldownUntil: number;
   guardUntil: number;
+  healthPips: Phaser.GameObjects.Arc[];
 }

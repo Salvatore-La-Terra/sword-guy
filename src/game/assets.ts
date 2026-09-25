@@ -204,25 +204,25 @@ function createFloorDecals(scene: Phaser.Scene) {
   });
 
   withGraphics(scene, graphics => {
-    graphics.fillStyle(0x450a0a, 0.55).fillEllipse(20, 20, 34, 22);
-    graphics.fillStyle(0x7f1d1d, 0.45).fillEllipse(14, 16, 14, 10);
-    graphics.fillStyle(0x7f1d1d, 0.4).fillEllipse(28, 24, 12, 8);
-    graphics.fillStyle(0x991b1b, 0.3).fillEllipse(20, 20, 20, 12);
+    graphics.fillStyle(0x4a3532, 0.55).fillEllipse(20, 20, 34, 22);
+    graphics.fillStyle(0x6b4a45, 0.45).fillEllipse(14, 16, 14, 10);
+    graphics.fillStyle(0x6b4a45, 0.4).fillEllipse(28, 24, 12, 8);
+    graphics.fillStyle(0x7a5650, 0.3).fillEllipse(20, 20, 20, 12);
     graphics.generateTexture('floor-blood-a', 40, 40);
   });
 
   withGraphics(scene, graphics => {
-    graphics.fillStyle(0x450a0a, 0.5).fillEllipse(14, 14, 22, 16);
-    graphics.fillStyle(0x7f1d1d, 0.4).fillEllipse(18, 12, 10, 7);
+    graphics.fillStyle(0x4a3532, 0.5).fillEllipse(14, 14, 22, 16);
+    graphics.fillStyle(0x6b4a45, 0.4).fillEllipse(18, 12, 10, 7);
     graphics.generateTexture('floor-blood-b', 28, 28);
   });
 
   withGraphics(scene, graphics => {
-    graphics.fillStyle(0x000000, 0.25).fillEllipse(14, 22, 16, 6);
-    graphics.fillStyle(0xe5e7eb, 0.92).fillEllipse(14, 14, 15, 12);
-    graphics.fillStyle(0xd1d5db).fillRoundedRect(8, 18, 12, 7, 2);
-    graphics.fillStyle(0x1f2937).fillEllipse(9, 13, 4, 5).fillEllipse(19, 13, 4, 5);
-    graphics.fillStyle(0x1f2937).fillTriangle(14, 15, 12, 19, 16, 19);
+    graphics.fillStyle(0x000000, 0.2).fillEllipse(14, 22, 16, 6);
+    graphics.fillStyle(0xc7c5c1, 0.75).fillEllipse(14, 14, 15, 12);
+    graphics.fillStyle(0xb5b3ae, 0.75).fillRoundedRect(8, 18, 12, 7, 2);
+    graphics.fillStyle(0x3f3d3a, 0.75).fillEllipse(9, 13, 4, 5).fillEllipse(19, 13, 4, 5);
+    graphics.fillStyle(0x3f3d3a, 0.75).fillTriangle(14, 15, 12, 19, 16, 19);
     graphics.generateTexture('floor-skull', 28, 28);
   });
 }

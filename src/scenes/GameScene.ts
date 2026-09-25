@@ -10,7 +10,7 @@ import { ARENA, COMBAT, FURNITURE, GAME_HEIGHT, GAME_WIDTH, PLAYER, SKELETON } f
 import { angleBetween, angleDifference, directionFromAngle } from '../game/math';
 import { SceneTransitions } from '../game/sceneTransitions';
 import { createScoreFeedback, type ScoreFeedback } from '../game/scoreFeedback';
-import { isSoundMuted, playSound, toggleSoundMuted, unlockSound } from '../game/sound';
+import { playSound, toggleSoundMuted, unlockSound } from '../game/sound';
 import type { Fighter, Player, Skeleton } from '../game/types';
 
 type Keys = Record<'w' | 'a' | 's' | 'd' | 'esc' | 'space' | 'm', Phaser.Input.Keyboard.Key>;
@@ -25,12 +25,8 @@ export class GameScene extends Phaser.Scene {
   private skeletons: Skeleton[] = [];
   private wave = 1;
   private leftMouseWasDown = false;
-  private statusText?: Phaser.GameObjects.Text;
   private waveText?: Phaser.GameObjects.Text;
-  private skeletonText?: Phaser.GameObjects.Text;
-  private healText?: Phaser.GameObjects.Text;
   private scoreText?: Phaser.GameObjects.Text;
-  private soundText?: Phaser.GameObjects.Text;
   private promptText?: Phaser.GameObjects.Text;
   private scoreFeedback?: ScoreFeedback;
   private transitions?: SceneTransitions;
@@ -87,8 +83,7 @@ export class GameScene extends Phaser.Scene {
     const rightMouseDown = pointer.rightButtonDown();
 
     if (Phaser.Input.Keyboard.JustDown(this.keys.m)) {
-      const muted = toggleSoundMuted();
-      this.soundText?.setText(`Sound: ${muted ? 'Off' : 'On'} (M)`);
+      toggleSoundMuted();
     }
 
     if (Phaser.Input.Keyboard.JustDown(this.keys.esc)) {
@@ -114,7 +109,6 @@ export class GameScene extends Phaser.Scene {
       if (leftMouseDown && !this.leftMouseWasDown) {
         this.awaitingNextWave = false;
         this.promptText?.setText('');
-        this.statusText?.setText('');
         this.player.sprite.clearTint();
         this.player.sword.setVisible(false);
         this.player.shield.setVisible(false);
@@ -151,7 +145,7 @@ export class GameScene extends Phaser.Scene {
 
     this.resolveActiveAttacks(time);
     this.updateVisuals(time);
-    this.updateUi(time);
+    this.updateUi();
     this.leftMouseWasDown = leftMouseDown;
   }
 
@@ -183,11 +177,6 @@ export class GameScene extends Phaser.Scene {
 
     this.add.rectangle(GAME_WIDTH / 2, ARENA.top, 520, 8, 0x94a3b8, 0.55);
     this.add.rectangle(GAME_WIDTH / 2, ARENA.bottom, 520, 8, 0x94a3b8, 0.55);
-    this.add.text(GAME_WIDTH / 2, 48, 'CASTLE ARENA', {
-      color: '#cbd5e1',
-      fontFamily: 'Georgia',
-      fontSize: '18px'
-    }).setOrigin(0.5);
 
     this.createFurniture();
   }
@@ -237,30 +226,10 @@ export class GameScene extends Phaser.Scene {
       fontFamily: 'Arial',
       fontSize: '20px'
     }).setDepth(20);
-    this.skeletonText = this.add.text(GAME_WIDTH - 190, 18, '', {
-      color: '#f8fafc',
-      fontFamily: 'Arial',
-      fontSize: '20px'
-    }).setDepth(20);
-    this.statusText = this.add.text(24, 48, '', {
-      color: '#fbbf24',
-      fontFamily: 'Arial',
-      fontSize: '16px'
-    }).setDepth(20);
-    this.healText = this.add.text(24, 67, '', {
-      color: '#86efac',
-      fontFamily: 'Arial',
-      fontSize: '14px'
-    }).setDepth(20);
-    this.scoreText = this.add.text(GAME_WIDTH - 190, 47, '', {
+    this.scoreText = this.add.text(GAME_WIDTH - 190, 18, '', {
       color: '#facc15',
       fontFamily: 'Arial',
-      fontSize: '18px'
-    }).setDepth(20);
-    this.soundText = this.add.text(GAME_WIDTH - 190, 70, '', {
-      color: '#94a3b8',
-      fontFamily: 'Arial',
-      fontSize: '13px'
+      fontSize: '20px'
     }).setDepth(20);
     this.scoreFeedback = createScoreFeedback(this, this.scoreText);
     this.promptText = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2, '', {
@@ -355,6 +324,11 @@ export class GameScene extends Phaser.Scene {
     sprite.setBounce(0.05);
     sprite.setDepth(9);
 
+    const healthPips: Phaser.GameObjects.Arc[] = [];
+    for (let pip = 0; pip < SKELETON.health; pip += 1) {
+      healthPips.push(this.add.circle(point.x, point.y, 3, 0xf87171).setDepth(9));
+    }
+
     return {
       id: `skeleton-${this.wave}-${index}`,
       sprite,
@@ -371,7 +345,8 @@ export class GameScene extends Phaser.Scene {
       patrolTarget: this.randomPatrolPoint(point),
       nextDecisionAt: 0,
       attackCooldownUntil: 0,
-      guardUntil: 0
+      guardUntil: 0,
+      healthPips
     };
   }
 
@@ -639,7 +614,6 @@ export class GameScene extends Phaser.Scene {
     this.applyPush(target, attacker, PLAYER.staggerSpeed, COMBAT.staggerMs, time);
 
     if (target.id === 'player') {
-      this.statusText?.setText('You were hit!');
       if (target.hp <= 0) {
         this.loseGame();
       }
@@ -657,24 +631,21 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (this.player.hp >= PLAYER.maxHealth) {
-      this.statusText?.setText('Health is already full.');
       return;
     }
 
     if (time < this.healCooldownUntil) {
-      const seconds = Math.ceil((this.healCooldownUntil - time) / 1000);
-      this.statusText?.setText(`Heal recharging: ${seconds}s remaining.`);
       return;
     }
 
     const previousHealth = this.player.hp;
     this.player.hp = Math.min(PLAYER.maxHealth, this.player.hp + HEAL_AMOUNT);
-    const restored = this.player.hp - previousHealth;
     this.healCooldownUntil = time + HEAL_COOLDOWN_MS;
-    this.statusText?.setText(`Restored ${restored} health.`);
-    this.showHeal(this.positionOf(this.player));
-    spawnHealEffect(this, this.positionOf(this.player));
-    playSound('heal');
+    if (this.player.hp > previousHealth) {
+      this.showHeal(this.positionOf(this.player));
+      spawnHealEffect(this, this.positionOf(this.player));
+      playSound('heal');
+    }
   }
 
   private isBlocking(target: Fighter, attackerPosition: Phaser.Math.Vector2) {
@@ -754,6 +725,9 @@ export class GameScene extends Phaser.Scene {
     skeleton.sprite.body.enable = false;
     skeleton.sword.setVisible(false);
     skeleton.shield.setVisible(false);
+    for (const pip of skeleton.healthPips) {
+      pip.setVisible(false);
+    }
     this.time.delayedCall(180, () => {
       if (skeleton.sprite.active) {
         skeleton.sprite.setTexture(`${skeleton.texturePrefix}-down-die-1`);
@@ -780,6 +754,9 @@ export class GameScene extends Phaser.Scene {
     skeleton.sprite.destroy();
     skeleton.sword.destroy();
     skeleton.shield.destroy();
+    for (const pip of skeleton.healthPips) {
+      pip.destroy();
+    }
   }
 
   private winWave() {
@@ -789,7 +766,6 @@ export class GameScene extends Phaser.Scene {
       y: GAME_HEIGHT / 2 - 70
     });
     this.promptText?.setText(`Wave ${this.wave} cleared!\nLeft-click for the next level.`);
-    this.statusText?.setText('Victory. Choose when to continue.');
     this.transitions?.playWaveClear(this.wave);
     playSound('waveClear');
   }
@@ -813,6 +789,24 @@ export class GameScene extends Phaser.Scene {
     }
     for (const skeleton of this.skeletons) {
       this.updateFighterVisuals(skeleton, time);
+      this.updateHealthPips(skeleton);
+    }
+  }
+
+  private updateHealthPips(skeleton: Skeleton) {
+    const count = skeleton.healthPips.length;
+    if (count === 0) {
+      return;
+    }
+    const spacing = 8;
+    const startX = skeleton.sprite.x - ((count - 1) * spacing) / 2;
+    const y = skeleton.sprite.y + 24;
+    for (let index = 0; index < count; index += 1) {
+      const pip = skeleton.healthPips[index];
+      pip.setPosition(startX + index * spacing, y);
+      const filled = index < skeleton.hp;
+      pip.setFillStyle(filled ? 0xf87171 : 0x1f2937, filled ? 1 : 0.5);
+      pip.setStrokeStyle(1, 0x111827, 0.8);
     }
   }
 
@@ -924,30 +918,16 @@ export class GameScene extends Phaser.Scene {
     return new Phaser.Math.Vector2(facingLeft ? -20 : 20, 5);
   }
 
-  private updateUi(time: number) {
+  private updateUi() {
     if (!this.player) {
       return;
     }
 
     this.waveText?.setText(`Wave ${this.wave}`);
-    this.skeletonText?.setText(`Skeletons: ${this.skeletons.length}`);
-    this.soundText?.setText(`Sound: ${isSoundMuted() ? 'Off' : 'On'} (M)`);
     for (let index = 0; index < this.hearts.length; index += 1) {
       this.hearts[index].setAlpha(index < this.player.hp ? 1 : 0.25);
     }
 
-    if (this.player.hp >= PLAYER.maxHealth) {
-      this.healText?.setText('Space heal: Health full');
-    } else if (time < this.healCooldownUntil) {
-      const seconds = Math.ceil((this.healCooldownUntil - time) / 1000);
-      this.healText?.setText(`Space heal: Ready in ${seconds}s`);
-    } else {
-      this.healText?.setText(`Space heal: Ready (+${HEAL_AMOUNT} health)`);
-    }
-
-    if (!this.defeat && !this.awaitingNextWave && this.statusText?.text === '') {
-      this.statusText.setText('WASD move | Mouse attack/shield | Space heal | ESC pause');
-    }
     if (!this.awaitingNextWave && !this.defeat && !this.paused) {
       this.promptText?.setText('');
     }
@@ -964,7 +944,6 @@ export class GameScene extends Phaser.Scene {
       this.physics.pause();
       this.tweens.pauseAll();
       this.promptText?.setText('Paused\nPress ESC to resume.');
-      this.statusText?.setText('Game paused.');
       return;
     }
 
@@ -974,7 +953,6 @@ export class GameScene extends Phaser.Scene {
     this.shiftTimers(pausedFor);
     this.healCooldownUntil += pausedFor;
     this.promptText?.setText('');
-    this.statusText?.setText('');
     this.pausedAt = 0;
   }
 
